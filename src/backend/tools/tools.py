@@ -14,6 +14,21 @@ from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _get_secret(key: str, default: str = "") -> str:
+    """
+    Read from st.secrets (Streamlit Cloud) first,
+    fall back to os.getenv / .env (local development).
+    """
+    try:
+        import streamlit as st
+        val = st.secrets.get(key)
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
 COHERE_EMBED_MODEL     = "embed-english-v3.0"
 EMBED_INPUT_TYPE_DOC   = "search_document"
 EMBED_INPUT_TYPE_QUERY = "search_query"
@@ -43,9 +58,9 @@ _duckduck = DuckDuckGoSearchRun(region="us-en")
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _cohere_client() -> cohere.Client:
-    api_key = os.getenv("COHERE_API_KEY", "")
+    api_key = _get_secret("COHERE_API_KEY")
     if not api_key:
-        raise ValueError("COHERE_API_KEY environment variable is not set.")
+        raise ValueError("COHERE_API_KEY is not set — add it to .env (local) or Streamlit Cloud secrets.")
     return cohere.Client(api_key)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -9,6 +10,7 @@ from typing import Optional, Tuple
 from dotenv import load_dotenv
 from groq import Groq
 from google.cloud import vision
+from google.oauth2 import service_account
 from PIL import Image                   # used for image validation / conversion
 
 from backend.logger import get_logger
@@ -17,24 +19,86 @@ from backend.exceptions import Agent_Exception
 load_dotenv()
 logger = get_logger(__name__)
 
+
+# ── Secret helper (same pattern as agents.py and tools.py) ───────────────────
+def _get_secret(key: str, default: str = "") -> str:
+    """
+    Read from st.secrets (Streamlit Cloud) first,
+    fall back to os.getenv / .env (local development).
+    """
+    try:
+        import streamlit as st
+        val = st.secrets.get(key)
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
+def _build_vision_client() -> Optional[vision.ImageAnnotatorClient]:
+    """
+    Build a Google Vision client using whichever credential source is available.
+
+    Priority order:
+      1. st.secrets["GOOGLE_CREDENTIALS_JSON"]  — JSON content as a string
+         (paste the entire service-account JSON into Streamlit Cloud secrets)
+      2. os.getenv("GOOGLE_APPLICATION_CREDENTIALS") — path to a local .json file
+         (standard local dev approach via .env)
+
+    Returns None if neither source is available, so callers can degrade gracefully.
+    """
+    # ── Source 1: JSON content stored directly in st.secrets / env var ───────
+    creds_json_str = _get_secret("GOOGLE_CREDENTIALS_JSON")
+    if creds_json_str:
+        try:
+            creds_info  = json.loads(creds_json_str)
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_info,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            client = vision.ImageAnnotatorClient(credentials=credentials)
+            logger.info("[MediaProcessor] Google Vision initialised from credentials JSON secret")
+            return client
+        except Exception as exc:
+            logger.error(f"[MediaProcessor] Failed to init Vision from JSON secret: {exc}")
+
+    # ── Source 2: Path to a local service-account JSON file ──────────────────
+    creds_path = _get_secret("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_path and os.path.exists(creds_path):
+        try:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+            client = vision.ImageAnnotatorClient()
+            logger.info(f"[MediaProcessor] Google Vision initialised from file: {creds_path}")
+            return client
+        except Exception as exc:
+            logger.error(f"[MediaProcessor] Failed to init Vision from file path: {exc}")
+
+    logger.warning(
+        "[MediaProcessor] Google Vision not initialised — "
+        "set GOOGLE_CREDENTIALS_JSON (JSON string) or "
+        "GOOGLE_APPLICATION_CREDENTIALS (file path) in secrets / .env"
+    )
+    return None
+
+
 class MediaProcessor:
-    
+
     def __init__(self):
         self.vision_client: Optional[vision.ImageAnnotatorClient] = None
         self.groq_client:   Optional[Groq]                        = None
         self._initialize_clients()
 
     def _initialize_clients(self) -> None:
+        # ── Google Vision (OCR) ───────────────────────────────────────────────
         try:
-            import os
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"J:\MathTutor\secrets\mathtutorocr-7144a11193df.json"
-            self.vision_client = vision.ImageAnnotatorClient()
-            logger.info("[MediaProcessor] Google Cloud Vision OCR initialised")
+            self.vision_client = _build_vision_client()
         except Exception as exc:
             logger.error(f"[MediaProcessor] Google Vision init failed: {exc}")
 
+        # ── Groq Whisper (ASR) ────────────────────────────────────────────────
         try:
-            api_key = os.getenv("GROQ_API_KEY")
+            api_key = _get_secret("GROQ_API_KEY")
             if not api_key:
                 raise ValueError("GROQ_API_KEY not set")
             self.groq_client = Groq(api_key=api_key)
@@ -43,11 +107,12 @@ class MediaProcessor:
             logger.error(f"[MediaProcessor] Groq Whisper init failed: {exc}")
 
     def process_image(self, image_input) -> Tuple[str, float]:
-        
+
         if not self.vision_client:
             raise RuntimeError(
                 "Google Vision client not initialised. "
-                "Ensure GOOGLE_APPLICATION_CREDENTIALS is set."
+                "Set GOOGLE_CREDENTIALS_JSON (JSON string) in Streamlit secrets, "
+                "or GOOGLE_APPLICATION_CREDENTIALS (file path) in .env for local dev."
             )
 
         try:
@@ -83,7 +148,7 @@ class MediaProcessor:
             raise Agent_Exception(exc, sys)
 
     def process_audio(self, audio_input) -> Tuple[str, float]:
-        
+
         if not self.groq_client:
             raise RuntimeError(
                 "Groq client not initialised. Ensure GROQ_API_KEY is set."
@@ -167,6 +232,8 @@ class MediaProcessor:
         # Collapse whitespace
         return " ".join(cleaned.split())
 
+
+# ── numpy globals for python_calculator sandbox ───────────────────────────────
 try:
     import numpy as _np
     _NUMPY_GLOBALS: dict = {
@@ -208,10 +275,9 @@ _SAFE_GLOBALS: dict = {
 
 
 def python_calculator(expression: str) -> dict:
-   
     expression = expression.strip()
     try:
-        result = eval(expression, _SAFE_GLOBALS, {})   
+        result = eval(expression, _SAFE_GLOBALS, {})
         logger.info(f"[Calculator] {expression} = {result}")
         return {"result": result, "expression": expression}
     except ZeroDivisionError:

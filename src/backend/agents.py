@@ -33,7 +33,22 @@ logger = get_logger(__name__)
 checkpointer = InMemorySaver()
 
 
-@lc_tool
+def _get_secret(key: str, default: str = "") -> str:
+    """
+    Read a secret from st.secrets (Streamlit Cloud) first,
+    then fall back to os.getenv / .env (local development).
+    This lets the same code run unchanged in both environments.
+    """
+    try:
+        import streamlit as st
+        val = st.secrets.get(key)
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 def python_calculator_tool(expression: str) -> dict:
     """
     Evaluate a Python math expression safely (no imports, no side effects).
@@ -271,9 +286,9 @@ class BaseAgent:
 
     def __init__(self):
 
-        key = os.getenv("GROQ_API_KEY")
+        key = _get_secret("GROQ_API_KEY")
         if not key:
-            raise ValueError("GROQ_API_KEY is not set.")
+            raise ValueError("GROQ_API_KEY is not set — add it to .env (local) or Streamlit Cloud secrets.")
         self.llm = ChatGroq(
             api_key=key,
             model_name="llama-3.3-70b-versatile",
@@ -417,13 +432,6 @@ class SolverAgent(BaseAgent):
         # Without it, Groq sometimes ignores tool schema and writes inline
         # <function=...> tags which cause 400 tool_use_failed errors.
         return self.llm.bind_tools(SOLVER_TOOLS, tool_choice="auto")
-
-    def _build_plain_llm(self):
-        """Plain LLM with NO tools bound — used for fallback reasoning-only retries.
-        When the model has already mixed prose + tool tags and caused a 400, sending
-        the same tool schema again just repeats the failure. Removing tools entirely
-        forces a clean prose response."""
-        return self.llm
     
     def solver_agent(self, state: AgentState) -> AgentState:
         """
@@ -477,22 +485,26 @@ class SolverAgent(BaseAgent):
 Solving strategy: {strategy}
 {feedback_block}
 
-You have access to tools. Use them via the structured tool_calls mechanism.
-RULE: Each turn is EITHER one-or-more tool calls OR your final written solution — never both in the same turn.
+CRITICAL TOOL-USE RULES — read carefully:
+1. Each response must be EITHER a tool call OR written reasoning. NEVER mix them.
+2. If you need a tool: output ONLY the tool call, nothing else — no prose before or after.
+3. If you are writing the solution: output ONLY text — do NOT embed tool calls inside text.
+4. NEVER write <function=...> tags in your text. Use the structured tool_calls mechanism only.
+5. Decide at the start of each turn: do I need a tool? If yes → call it. If no → write solution.
 
-TOOLS:
+TOOLS available:
 {rag_instruction}
 - web_search_tool(query)             : search the web for formulas, theory, or examples.
                                        {"Use if rag_tool found nothing." if doc_uploaded else "Use when you need a formula or theorem."}
 - python_calculator_tool(expression) : evaluate any Python math expression numerically.
                                        Use for ALL arithmetic — never compute mentally.
 
-STEPS:
-{"1. Call rag_tool with a focused query." if doc_uploaded else "1. Call web_search_tool if you need a formula or theorem."}
-{"2. If rag_tool empty, call web_search_tool." if doc_uploaded else "2. Call python_calculator_tool for all numerical steps."}
-{"3." if doc_uploaded else "3."} Call python_calculator_tool for every numerical computation.
-{"4." if doc_uploaded else "4."} Write the full step-by-step solution showing every formula and substitution.
-{"5." if doc_uploaded else "4."} End with FINAL ANSWER: <value> on its own line."""
+WORKFLOW:
+{"Step 1 — call rag_tool with a focused query (e.g. 'cross product formula')." if doc_uploaded else "Step 1 — call web_search_tool if you need a formula or theorem."}
+{"Step 2 — if rag_tool empty, call web_search_tool." if doc_uploaded else "Step 2 — call python_calculator_tool for all numerical computation."}
+Step {"3" if doc_uploaded else "3"} — call python_calculator_tool for all numerical computation.
+Step {"4" if doc_uploaded else "4"} — write the complete step-by-step solution with every formula and substitution shown.
+Step {"5" if doc_uploaded else "4"} — end with a clearly labelled FINAL ANSWER on its own line."""
 
             # Build a clean message list for the solver.
             if not existing_messages:
@@ -511,60 +523,24 @@ STEPS:
 
             solver_llm = self._build_solver_llm()
 
-            # ── Invoke with two-stage fallback ────────────────────────────────────
-            # Stage 1: normal call with tools bound (tool_choice="auto").
-            # Stage 2: if Groq returns 400 tool_use_failed (model mixed prose +
-            #          inline <function=...> tags), retry WITHOUT tools so the model
-            #          is forced to write plain prose — no schema to confuse it.
-            # Stage 3: if stage-2 also fails (rare), raise so the caller can HITL.
-            _is_tool_fail = lambda e: "tool_use_failed" in str(e) or (
-                "400" in str(e) and "failed_generation" in str(e)
-            )
-
+            # Retry once on Groq 400 tool_use_failed — this happens when the model
+            # outputs a malformed inline tool call tag. On retry we strip the last
+            # assistant message (the malformed one) and re-invoke.
             try:
                 response = solver_llm.invoke(messages)
             except Exception as invoke_err:
-                if not _is_tool_fail(invoke_err):
-                    raise  # non-tool error — propagate immediately
-
-                # Stage 2: tool_use_failed — retry with SAME tools but a fresh,
-                # minimal message list. Dropping the full history removes any
-                # prior assistant turn that had malformed inline tags, which is
-                # what confuses Groq into repeating the bad pattern.
-                logger.warning(
-                    f"[Solver] tool_use_failed — retrying with clean message list | "
-                    f"err={str(invoke_err)[:120]}"
-                )
-                retry_messages = [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=f"Solve this problem step by step using the tools available:\n\n{problem_text}"),
-                ]
-                try:
-                    response = solver_llm.invoke(retry_messages)
-                    logger.info("[Solver] Retry (clean history) succeeded")
-                except Exception as retry_err:
-                    # Stage 3: tools still failing — fall back to plain prose only
-                    if not _is_tool_fail(retry_err):
-                        raise
-                    logger.warning("[Solver] Retry also tool_use_failed — falling back to no-tools")
-                    plain_system = (
-                        f"You are an expert JEE mathematics solver (attempt {iteration + 1}).\n"
-                        f"Solving strategy: {strategy}\n"
-                        f"{feedback_block}\n\n"
-                        "Write a complete step-by-step solution showing every formula and substitution.\n"
-                        "End with FINAL ANSWER: <value> on its own line."
-                    )
-                    fallback_messages = [
-                        SystemMessage(content=plain_system),
-                        HumanMessage(content=f"Solve this problem:\n\n{problem_text}"),
+                err_str = str(invoke_err)
+                if "tool_use_failed" in err_str or "400" in err_str:
+                    logger.warning(f"[Solver] tool_use_failed on first attempt, retrying with fresh message list | err={err_str[:120]}")
+                    # Retry with only system + problem — drop any prior context that
+                    # confused the model into mixing prose and tool calls.
+                    retry_messages = [
+                        SystemMessage(content=system_prompt),
+                        HumanMessage(content=f"Solve this problem step by step:\n\n{problem_text}"),
                     ]
-                    plain_llm = self._build_plain_llm()
-                    try:
-                        response = plain_llm.invoke(fallback_messages)
-                        logger.info("[Solver] Stage-3 no-tools fallback succeeded")
-                    except Exception as final_err:
-                        logger.error(f"[Solver] All retries failed: {final_err}")
-                        raise
+                    response = solver_llm.invoke(retry_messages)
+                else:
+                    raise
 
             # Increment iteration counter only when the LLM gives a final answer
             # (i.e. no tool_calls — it has finished reasoning)
@@ -756,34 +732,14 @@ The animation should: {viz_hint or "illustrate the key mathematical concept step
 
 Requirements:
 - Import from manim (not manimlib): from manim import *
-- import numpy as np  on the second line (after from manim import *)
-- Define exactly ONE class that extends Scene (use ThreeDScene for any 3D geometry)
+- Define exactly ONE class that extends Scene
 - Be fully self-contained (no external files, no user input)
-- Use MathTex for all equations and labels
-
-MANIM API RULES — follow exactly, do NOT invent methods or classes:
-- 3D points/dots   : Dot3D(point, color=X)  — NOT Sphere().move_to()
-- 3D arrows        : Arrow3D(start, end, color=X)
-- 3D lines         : Line3D(start, end, color=X)
-- Axes              : ThreeDAxes()
-- A plane surface  : use Surface(lambda u,v: ..., u_range=..., v_range=...) — there is NO Plane() class in Manim CE
-- Labels in 3D     : for EVERY MathTex/Text label shown in a ThreeDScene:
-                       1. Create it: label = MathTex(r"...")
-                       2. Pin it: self.add_fixed_in_frame_mobjects(label)
-                       3. Position it: label.to_corner(UL)
-                       4. To REPLACE a label: create the new one, call self.add_fixed_in_frame_mobjects(new_label), position it, then self.play(FadeOut(old_label), FadeIn(new_label)) — NEVER use ReplacementTransform or Transform between a fixed-frame label and any other object
-                       5. Never animate (Write/Transform) a label before calling add_fixed_in_frame_mobjects on it
-- Camera           : self.set_camera_orientation(phi=..., theta=...)  then self.begin_ambient_camera_rotation(rate=0.2)
-- Method names     : ALL method names use underscores, NEVER hyphens — e.g. move_to(), set_color(), rotate() — NEVER rotate-about-origin() or any hyphenated name
-- Do NOT call .rotate() with more than 2 positional args; use .rotate(angle, axis=np.array([x,y,z]))
-- Do NOT use: Plane(), NumberPlane() for 3D surfaces, or any manimlib-only classes
+- Use MathTex for all equations
+- Use ThreeDScene if the problem involves 3D geometry
 
 Problem: {problem_text}
 
-Full step-by-step solution:
-{solution[:1200] if solution else "(not available)"}
-
-Final answer: {solver_out.get("final_answer") or solver_out.get("solution", "")[-200:]}
+Solution summary: {solution[:800]}
 
 Reply with ONLY the Python code. No explanation, no markdown fences, no preamble."""
 
@@ -895,7 +851,7 @@ async def _call_manim_mcp(scene_code: str, scene_class: str) -> Optional[str]:
         from fastmcp import Client as FastMCPClient
         import json as _json
 
-        server_url = os.getenv("MANIM_MCP_SERVER_URL", "http://localhost:8765/mcp")
+        server_url = _get_secret("MANIM_MCP_SERVER_URL", "http://localhost:8765/mcp")
         logger.info(f"[Manim MCP] Connecting to {server_url}")
 
         async with FastMCPClient(server_url) as client:
