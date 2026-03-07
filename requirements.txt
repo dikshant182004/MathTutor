@@ -1,0 +1,16 @@
+# Core dependencies
+langchain
+langchain-groq
+langgraph
+pydantic
+
+# Multimodal processing
+google-cloud-vision
+openai-whisper
+Pillow
+numpy
+
+# Additional utilities
+python-dotenv
+
+streamlit
