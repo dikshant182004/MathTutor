@@ -1,41 +1,25 @@
-from __future__ import annotations
-
-from enum import Enum
-from typing import List, Optional
-
+from agents import List, Optional
 from pydantic import BaseModel, Field, model_validator
-
-
-def _coerce_bools(data: dict) -> dict:
-    """
-    LLMs (especially via Groq tool-calling) sometimes return 'true'/'false'
-    strings instead of JSON booleans.  This coerces them before Pydantic
-    validation so we never get a schema mismatch error.
-    """
-    bool_like = {"true": True, "false": False, "1": True, "0": False}
-    for k, v in data.items():
-        if isinstance(v, str) and v.lower() in bool_like:
-            data[k] = bool_like[v.lower()]
-    return data
+from utils.helper import _coerce_bools
 
 class ParserOutput(BaseModel):
     """
     Output of the Parser Agent.
     Converts raw text / OCR / ASR input into a clean, structured problem.
     """
+
     problem_text:         str           = Field(...,  description="Cleaned, complete problem statement ready for solving")
     topic:                Optional[str] = Field(None, description="Detected math topic (algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory)")
     variables:            List[str]     = Field(default_factory=list, description="All variables present in the problem, e.g. ['x', 'y', 'n']")
     constraints:          List[str]     = Field(default_factory=list, description="Explicit constraints or given conditions, e.g. ['x > 0', 'n is a positive integer']")
     needs_clarification:  bool          = Field(False, description="True only when the problem is genuinely ambiguous or critically incomplete")
     clarification_reason: Optional[str] = Field(None, description="Why clarification is needed — must be set when needs_clarification=True")
-    ocr_corrections:      List[str]     = Field(default_factory=list, description="List of OCR/ASR corrections made, e.g. ['0 -> O', 'l -> 1']")
-    confidence_score:     float         = Field(1.0,  description="Parser confidence in its output, 0.0 to 1.0")
-
+    
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
         return _coerce_bools(data)
+
 
 class IntentRouterOutput(BaseModel):
     """

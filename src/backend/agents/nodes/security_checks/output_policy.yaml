@@ -1,0 +1,30 @@
+# ── output_policy.yaml ────────────────────────────────────────────────────────
+# Rules the safety agent applies to the solver's output before it reaches
+# the student. For a math tutor the risk surface is narrow but real.
+# ──────────────────────────────────────────────────────────────────────────────
+
+blocked_output_patterns:
+  - harmful_synthesis_instructions   # e.g. a "math problem" about calculating drug doses
+  - weapon_related_calculations      # trajectory, explosive yield framed as physics
+  - personal_data_exposure           # solver hallucinating real names, emails, IDs
+  - self_harm_content
+  - hate_speech_or_slurs
+  - sexually_explicit_content
+  - political_propaganda
+
+# These are safe to ignore — the solver routinely produces them
+always_allowed:
+  - mathematical_notation
+  - step_by_step_algebra
+  - LaTeX_expressions
+  - numerical_answers
+  - references_to_theorems
+  - unit_conversions
+
+# What to do on a violation
+on_violation:
+  action: block_and_replace
+  replacement_message: >
+    The solution could not be displayed due to a policy violation.
+    Please rephrase your problem and try again.
+  log_level: WARNING

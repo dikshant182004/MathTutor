@@ -1,0 +1,39 @@
+# ── topic_policy.yaml ─────────────────────────────────────────────────────────
+# Defines allowed math topics and blocked categories for the guardrail agent.
+# The guardrail LLM reads this file as part of its system prompt.
+# ──────────────────────────────────────────────────────────────────────────────
+
+allowed_topics:
+  - algebra
+  - calculus
+  - coordinate_geometry
+  - trigonometry
+  - probability
+  - statistics
+  - linear_algebra
+  - number_theory
+  - combinatorics
+  - vectors
+  - 3d_geometry
+  - complex_numbers
+  - differential_equations
+  - sequences_and_series
+  - matrices_and_determinants
+  - mathematical_reasoning
+  - sets_relations_functions
+
+# Requests that are clearly off-topic for a JEE math tutor
+blocked_categories:
+  - general_knowledge        # history, geography, current events
+  - coding_and_programming   # write code, debug, explain algorithms
+  - science_non_math         # chemistry reactions, biology, physics theory without math
+  - essay_writing            # write essays, summarise articles
+  - personal_advice          # mental health, relationships, career advice
+  - entertainment            # jokes, stories, movies, music
+  - medical_advice
+  - legal_advice
+  - financial_advice
+
+# If a request is borderline (e.g. physics with heavy math), allow it.
+# Only block when it is clearly outside mathematics.
+borderline_policy: allow_if_math_is_central

@@ -1,0 +1,75 @@
+# ── Virtual Environment ───────────────────────────────────────────────────────
+/myenv
+/venv
+/.venv
+/env
+
+src/logs
+
+
+# ── Secrets & Credentials ─────────────────────────────────────────────────────
+/secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+/logs
+*.log
+*.log.*
+
+# ── Manim Render Output ───────────────────────────────────────────────────────
+/manim_outputs
+/media
+__pycache__/manim_*
+
+# ── Python Cache ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Build / Distribution ──────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# ── OS Files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Uploads & Temp Files ──────────────────────────────────────────────────────
+/uploads
+/tmp
+*.tmp
+*.temp
+
+# ── Jupyter Notebooks ─────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Coverage / Testing ────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ── Streamlit ─────────────────────────────────────────────────────────────────
+.streamlit/secrets.toml

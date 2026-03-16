@@ -19,14 +19,14 @@ from langgraph.types import interrupt
 from backend.exceptions import Agent_Exception
 from backend.logger import get_logger
 from backend.tools.tools import rag_tool, web_search_tool, has_store
-from backend.utils.artifacts import (
+from backend.agents.utils.artifacts import (
     ExplainerOutput,
     IntentRouterOutput,
     ParserOutput,
     SolverOutput,
     VerifierOutput,
 )
-from backend.utils.helper import MediaProcessor, python_calculator
+from backend.agents.utils.helper import MediaProcessor, python_calculator
 
 load_dotenv()
 logger = get_logger(__name__)
@@ -486,11 +486,12 @@ Solving strategy: {strategy}
 {feedback_block}
 
 CRITICAL TOOL-USE RULES — read carefully:
-1. Each response must be EITHER a tool call OR written reasoning. NEVER mix them.
-2. If you need a tool: output ONLY the tool call, nothing else — no prose before or after.
-3. If you are writing the solution: output ONLY text — do NOT embed tool calls inside text.
-4. NEVER write <function=...> tags in your text. Use the structured tool_calls mechanism only.
-5. Decide at the start of each turn: do I need a tool? If yes → call it. If no → write solution.
+1. Each response must be EITHER a tool call OR written reasoning. NEVER BOTH in the same response.
+2. If you need a tool: output ONLY the structured tool call, NOTHING else — no prose before, no prose after, no explanation.
+3. If you are writing the solution: output ONLY text — do NOT embed any tool calls inside text.
+4. NEVER write <function=...> tags or <tool_call> tags anywhere in your text. The API handles tool calls — you must use the structured mechanism, not text tags.
+5. Decide at the START of each turn: do I need a tool? If yes → ONLY the tool call. If no → ONLY the solution text.
+6. If you are unsure whether to call a tool, skip it and write the solution directly.
 
 TOOLS available:
 {rag_instruction}
@@ -523,24 +524,55 @@ Step {"5" if doc_uploaded else "4"} — end with a clearly labelled FINAL ANSWER
 
             solver_llm = self._build_solver_llm()
 
-            # Retry once on Groq 400 tool_use_failed — this happens when the model
-            # outputs a malformed inline tool call tag. On retry we strip the last
-            # assistant message (the malformed one) and re-invoke.
-            try:
-                response = solver_llm.invoke(messages)
-            except Exception as invoke_err:
-                err_str = str(invoke_err)
-                if "tool_use_failed" in err_str or "400" in err_str:
-                    logger.warning(f"[Solver] tool_use_failed on first attempt, retrying with fresh message list | err={err_str[:120]}")
-                    # Retry with only system + problem — drop any prior context that
-                    # confused the model into mixing prose and tool calls.
-                    retry_messages = [
+            # Retry logic for Groq 400 tool_use_failed.
+            # The model sometimes mixes prose + inline <function=...> tags.
+            # Strategy: up to 2 retries, each with a cleaner/stricter prompt.
+            # Retry 1 — same temperature, stripped context
+            # Retry 2 — temperature=0, ultra-strict one-line prompt
+            def _invoke_with_retries(messages: list, problem_text: str, system_prompt: str):
+                try:
+                    return solver_llm.invoke(messages)
+                except Exception as err1:
+                    err1_str = str(err1)
+                    if "tool_use_failed" not in err1_str and "400" not in err1_str:
+                        raise
+                    logger.warning(f"[Solver] tool_use_failed attempt 1, retrying | {err1_str[:120]}")
+
+                    # Retry 1 — clean context, same LLM
+                    retry1_messages = [
                         SystemMessage(content=system_prompt),
-                        HumanMessage(content=f"Solve this problem step by step:\n\n{problem_text}"),
+                        HumanMessage(content=(
+                            "IMPORTANT: Your next response must be EITHER a single tool call "
+                            "OR a written solution. Do NOT mix them. Do NOT write <function=...> tags.\n\n"
+                            f"Solve this problem:\n\n{problem_text}"
+                        )),
                     ]
-                    response = solver_llm.invoke(retry_messages)
-                else:
-                    raise
+                    try:
+                        return solver_llm.invoke(retry1_messages)
+                    except Exception as err2:
+                        err2_str = str(err2)
+                        if "tool_use_failed" not in err2_str and "400" not in err2_str:
+                            raise
+                        logger.warning(f"[Solver] tool_use_failed attempt 2, retrying with temp=0 | {err2_str[:120]}")
+
+                        # Retry 2 — temperature=0, no tools, force direct answer
+                        cold_llm = ChatGroq(
+                            api_key=_get_secret("GROQ_API_KEY"),
+                            model_name="llama-3.3-70b-versatile",
+                            temperature=0,
+                        )
+                        retry2_messages = [
+                            SystemMessage(content=(
+                                "You are a JEE mathematics solver. "
+                                "Write a complete step-by-step solution as plain text only. "
+                                "Do NOT use any tools. Do NOT write <function=...> tags. "
+                                "End with FINAL ANSWER on its own line."
+                            )),
+                            HumanMessage(content=f"Solve this problem:\n\n{problem_text}"),
+                        ]
+                        return cold_llm.invoke(retry2_messages)
+
+            response = _invoke_with_retries(messages, problem_text, system_prompt)
 
             # Increment iteration counter only when the LLM gives a final answer
             # (i.e. no tool_calls — it has finished reasoning)
@@ -686,38 +718,77 @@ class ExplainerAgent(BaseAgent):
             needs_viz = plan.get("needs_visualization", False)
             viz_hint = plan.get("visualization_hint", "")
 
-            # ── Step 1: Structured explanation (NO manim code here) ───────────
-            # Manim code is generated in a separate plain call below.
-            # Reason: Groq's function-calling schema validation fails with
-            # 'tool_use_failed' (Error 400) when manim_scene_code contains
-            # long multi-line Python strings inside structured output.
+            # ── Step 1: Structured explanation via plain JSON (NO with_structured_output) ──
+            # Reason: Groq's function-calling (used by with_structured_output) produces
+            # 'tool_use_failed' 400 errors when the schema contains long string fields.
+            # Solution: ask for raw JSON as plain text, parse manually.
             prompt = f"""You are a patient, encouraging JEE math tutor explaining to a student.
 
-                Your job — produce a COMPLETE, mathematically rigorous explanation:
+Produce a JSON object with EXACTLY these keys (no extra keys, no markdown fences):
 
-                1. step_by_step: A list of numbered steps. EACH step MUST contain:
-                   - A plain-English description of what we are doing and WHY
-                   - The actual mathematical working: formulas, substitutions, calculations, algebra
-                   - The intermediate result obtained at that step
-                   Example of a good step: "Apply Bayes' theorem: P(A|B) = P(B|A)·P(A)/P(B) = (3/4·1/3)/(1/2) = 1/2"
-                   DO NOT just write "Calculate the probability" — show the numbers and algebra.
+{{
+  "step_by_step": [
+    "Step description with full mathematical working, formulas, substitutions and the result"
+  ],
+  "explanation": "One-paragraph conceptual summary of the approach.",
+  "key_concepts": ["Concept 1", "Concept 2", "Concept 3"],
+  "common_mistakes": ["Mistake 1", "Mistake 2"],
+  "difficulty_rating": "easy | medium | hard"
+}}
 
-                2. explanation: A one-paragraph conceptual summary of the approach used.
+Rules:
+- step_by_step: each entry MUST show the actual math — formulas, numbers, algebra — not just a description.
+- Return ONLY the JSON object. No preamble, no explanation, no markdown backticks.
 
-                3. key_concepts: 3–5 core mathematical concepts/theorems applied.
+Problem:
+{problem_text}
 
-                4. common_mistakes: 2–3 mistakes students typically make on this problem type.
+Full verified solution (use this as your source of truth for all numbers):
+{solution}"""
 
-                5. difficulty_rating: easy | medium | hard
+            plain_llm = self.llm   # plain ChatGroq — no bind_tools, no structured_output
+            raw_response = plain_llm.invoke([HumanMessage(content=prompt)])
+            raw_text = (raw_response.content or "").strip()
 
-                Problem:
-                {problem_text}
+            # Strip markdown fences if model adds them anyway
+            if raw_text.startswith("```"):
+                raw_text = "\n".join(
+                    line for line in raw_text.splitlines()
+                    if not line.strip().startswith("```")
+                ).strip()
 
-                Full verified solution (use this as your source of truth for all numbers):
-                {solution}"""
+            # Parse JSON — fall back to safe defaults if malformed
+            try:
+                import json as _json
+                parsed_json = _json.loads(raw_text)
+            except Exception as parse_err:
+                logger.warning(f"[Explainer] JSON parse failed ({parse_err}), using fallback")
+                parsed_json = {
+                    "step_by_step": [solution],
+                    "explanation": solution[:500],
+                    "key_concepts": [],
+                    "common_mistakes": [],
+                    "difficulty_rating": "medium",
+                }
 
-            structured_llm = self.llm.with_structured_output(ExplainerOutput)
-            result: ExplainerOutput = structured_llm.invoke([HumanMessage(content=prompt)])
+            # Build a simple namespace so the rest of the code can use result.X
+            class _ExplainerResult:
+                def __init__(self, d: dict):
+                    self.step_by_step      = d.get("step_by_step") or []
+                    self.explanation       = d.get("explanation") or ""
+                    self.key_concepts      = d.get("key_concepts") or []
+                    self.common_mistakes   = d.get("common_mistakes") or []
+                    self.difficulty_rating = d.get("difficulty_rating") or "medium"
+                def model_dump(self):
+                    return {
+                        "step_by_step":      self.step_by_step,
+                        "explanation":       self.explanation,
+                        "key_concepts":      self.key_concepts,
+                        "common_mistakes":   self.common_mistakes,
+                        "difficulty_rating": self.difficulty_rating,
+                    }
+
+            result = _ExplainerResult(parsed_json)
 
             # ── Step 2: Generate Manim code separately (plain text call) ──────
             # Only requested when needs_viz=True. A plain non-structured call
