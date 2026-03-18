@@ -10,8 +10,17 @@ import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from backend.agents import chatbot, retrieve_all_threads
-from backend.tools.tools import clear_store, get_store_info, ingest_pdf
+from authlib.integrations.requests_client import OAuth2Session
+
+from backend.agents.graph import chatbot, checkpointer
+from backend.agents.state import make_initial_state
+from backend.agents.nodes.memory.memory_manager import (
+    create_thread,
+    get_or_create_user,
+    get_thread_history,
+    load_thread_state,
+)
+from backend.agents.nodes.tools.tools import clear_store, get_store_info, ingest_pdf
 
 st.set_page_config(
     page_title="Math Tutor Agent",
@@ -127,27 +136,146 @@ AGENT_META: dict[str, dict] = {
     "detect_input":    {"icon": "🔍", "label": "Detect Input Type"},
     "ocr_node":        {"icon": "📸", "label": "OCR  (Image → Text)"},
     "asr_node":        {"icon": "🎤", "label": "ASR  (Audio → Text)"},
+    "guardrail_agent": {"icon": "🛡️", "label": "Guardrail Agent"},
+    "retrieve_ltm":    {"icon": "🧠", "label": "Retrieve LTM"},
     "parser_agent":    {"icon": "🧩", "label": "Parser Agent"},
     "intent_router":   {"icon": "🗺️",  "label": "Intent Router"},
     "solver_agent":    {"icon": "🧮", "label": "Solver Agent (ReAct)"},
     "tool_node":       {"icon": "🔧", "label": "Tool Executor"},
     "verifier_agent":  {"icon": "✅", "label": "Verifier / Critic"},
+    "safety_agent":    {"icon": "🔒", "label": "Safety Agent"},
     "explainer_agent": {"icon": "📚", "label": "Explainer / Tutor"},
     "manim_node":      {"icon": "🎬", "label": "Manim Visualiser"},
     "hitl_node":       {"icon": "🙋", "label": "Human-in-the-Loop"},
+    "store_ltm":       {"icon": "💾", "label": "Store LTM"},
 }
 
 TOOL_META: dict[str, dict] = {
     "rag_tool":               {"icon": "📄", "label": "RAG — PDF search"},
     "web_search_tool":        {"icon": "🌐", "label": "Web Search"},
-    "python_calculator_tool": {"icon": "🔢", "label": "Python Calculator"},
+    "calculator_tool":        {"icon": "🔢", "label": "Calculator"},
 }
 
 # Only explainer_agent produces the user-facing answer.
 # solver_agent output must NOT be streamed — it's raw reasoning text that
 # would duplicate (and precede) the explainer's formatted markdown.
 ANSWER_NODES = {"explainer_agent"}
-SATISFACTION_NODE = "satisfaction_hitl"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AUTH (Google OAuth via Authlib)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_GOOGLE_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO   = "https://www.googleapis.com/oauth2/v3/userinfo"
+_GOOGLE_SCOPE      = "openid email profile"
+
+
+def _logout() -> None:
+    for k in [
+        "oauth_state",
+        "google_user",
+        "student_id",
+        "thread_id",
+        "threads_meta",
+        "message_history",
+        "chat_threads",
+        "activity_log",
+        "hitl_pending",
+        "hitl_question",
+        "hitl_type",
+        "hitl_payload",
+    ]:
+        st.session_state.pop(k, None)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+    st.rerun()
+
+
+def _handle_google_oauth_callback() -> None:
+    qp = dict(st.query_params)
+    code  = qp.get("code")
+    state = qp.get("state")
+    if not code:
+        return
+
+    client_id     = st.secrets.get("GOOGLE_CLIENT_ID", "")
+    client_secret = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri  = st.secrets.get("OAUTH_REDIRECT_URI", "")
+    if not (client_id and client_secret and redirect_uri):
+        st.error("OAuth is not configured. Set GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/OAUTH_REDIRECT_URI in secrets.")
+        st.stop()
+
+    expected_state = st.session_state.get("oauth_state")
+    if expected_state and state and str(state) != str(expected_state):
+        st.error("OAuth state mismatch. Please try logging in again.")
+        st.stop()
+
+    oauth = OAuth2Session(
+        client_id=client_id,
+        client_secret=client_secret,
+        scope=_GOOGLE_SCOPE,
+        redirect_uri=redirect_uri,
+    )
+    token = oauth.fetch_token(
+        _GOOGLE_TOKEN_URL,
+        code=code,
+        client_secret=client_secret,
+    )
+    oauth.token = token
+    user = oauth.get(_GOOGLE_USERINFO).json()
+
+    email = (user or {}).get("email") or ""
+    name  = (user or {}).get("name") or email.split("@")[0]
+    if not email:
+        st.error("Google login succeeded, but no email was returned.")
+        st.stop()
+
+    sid = get_or_create_user(email=email, display_name=name)
+    st.session_state["google_user"] = {"email": email, "name": name}
+    st.session_state["student_id"]  = sid
+
+    # Clean URL (remove ?code=...)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
+def _require_login() -> None:
+    _handle_google_oauth_callback()
+
+    if st.session_state.get("student_id"):
+        return
+
+    st.title("🧮 Math Tutor")
+    st.caption("Please sign in with Google to continue.")
+
+    client_id     = st.secrets.get("GOOGLE_CLIENT_ID", "")
+    client_secret = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri  = st.secrets.get("OAUTH_REDIRECT_URI", "")
+
+    if not (client_id and client_secret and redirect_uri):
+        st.info("OAuth not configured yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI to Streamlit secrets.")
+        st.stop()
+
+    oauth = OAuth2Session(
+        client_id=client_id,
+        client_secret=client_secret,
+        scope=_GOOGLE_SCOPE,
+        redirect_uri=redirect_uri,
+    )
+    uri, state = oauth.create_authorization_url(
+        _GOOGLE_AUTH_URL,
+        access_type="offline",
+        prompt="consent",
+    )
+    st.session_state["oauth_state"] = state
+    st.link_button("Continue with Google", uri, use_container_width=True, type="primary")
+    st.stop()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -163,14 +291,18 @@ def _cfg(tid: str) -> dict:
 
 
 def _init_session() -> None:
+    _require_login()
+
+    sid = st.session_state["student_id"]
     defaults: dict = {
-        "thread_id":       _new_tid(),
-        "chat_threads":    [],
+        "thread_id":       None,
+        "threads_meta":    [],   # list[dict] from get_thread_history
         "message_history": [],
         "pdf_ingested":    False,
         "hitl_pending":    False,
         "hitl_question":   None,
         "hitl_type":       "",       # "clarification" | "satisfaction"
+        "hitl_payload":    None,     # full interrupt payload dict
         "activity_log":    [],      # [{node, icon, label, status, detail, ts}, ...]
         "current_node":    None,    # name of the node currently streaming
     }
@@ -178,25 +310,29 @@ def _init_session() -> None:
         if k not in st.session_state:
             st.session_state[k] = v
 
-    if not st.session_state["chat_threads"]:
-        try:
-            st.session_state["chat_threads"] = retrieve_all_threads()
-        except Exception:
-            st.session_state["chat_threads"] = []
+    # Load threads from Redis registry (per-student)
+    try:
+        st.session_state["threads_meta"] = get_thread_history(sid)
+    except Exception:
+        st.session_state["threads_meta"] = []
 
-    _register(st.session_state["thread_id"])
+    # Ensure we have an active thread
+    if not st.session_state.get("thread_id"):
+        if st.session_state["threads_meta"]:
+            st.session_state["thread_id"] = st.session_state["threads_meta"][0].get("thread_id")
+        else:
+            st.session_state["thread_id"] = create_thread(sid)
 
-
-def _register(tid: str) -> None:
-    if tid not in st.session_state["chat_threads"]:
-        st.session_state["chat_threads"].append(tid)
+    # Prime message history for active thread
+    st.session_state["message_history"] = _load_history(st.session_state["thread_id"])
 
 
 def reset_chat() -> None:
     old = st.session_state.get("thread_id")
     if old:
         clear_store(old)
-    tid = _new_tid()
+    sid = st.session_state["student_id"]
+    tid = create_thread(sid)
     st.session_state.update(
         thread_id       = tid,
         message_history = [],
@@ -204,10 +340,15 @@ def reset_chat() -> None:
         hitl_pending    = False,
         hitl_question   = None,
         hitl_type       = "",
+        hitl_payload    = None,
         activity_log    = [],
         current_node    = None,
     )
-    _register(tid)
+    # refresh sidebar list
+    try:
+        st.session_state["threads_meta"] = get_thread_history(sid)
+    except Exception:
+        pass
 
 
 # Prefixes used when storing HITL context in message_history
@@ -297,44 +438,44 @@ def _load_history(tid: str) -> list[dict]:
     return history
 
 
-def _check_hitl(tid: str) -> tuple[bool, Optional[str], str]:
+def _check_hitl(tid: str) -> tuple[bool, Optional[dict]]:
     """
-    Return (is_interrupted, question_text, hitl_type).
-    hitl_type is "clarification" | "satisfaction" | ""
+    Return (is_interrupted, interrupt_payload_dict).
 
-    Both hitl_node and satisfaction_hitl_node use interrupt() internally,
-    so we detect them via snap.next (the node whose interrupt() paused the graph).
+    In the new graph, ALL pauses happen in `hitl_node` and the payload includes
+    `hitl_type` (bad_input | clarification | verification | satisfaction).
     """
     try:
         snap = chatbot.get_state(config=_cfg(tid))
         next_nodes = list(snap.next or [])
+        if "hitl_node" not in next_nodes:
+            return False, None
 
-        # Determine type from which node is next (i.e. paused mid-execution)
-        if "satisfaction_hitl" in next_nodes:
-            hitl_type = "satisfaction"
-        elif "hitl_node" in next_nodes:
-            hitl_type = "clarification"
-        else:
-            return False, None, ""
-
-        # Extract question from the interrupt payload
         for task in (snap.tasks or []):
             for iv in getattr(task, "interrupts", []):
                 val = getattr(iv, "value", {}) or {}
-                q   = (val.get("question") or val.get("reason")
-                       or "Please clarify the problem.")
-                return True, str(q), hitl_type
-
-        # Fallback question if no payload
-        default_q = (
-            "Are you satisfied with this explanation?\n\nClick **✅ Yes** to ask your next question, or **🔄 No** to re-explain."
-            if hitl_type == "satisfaction"
-            else "Please clarify the problem."
-        )
-        return True, default_q, hitl_type
+                if isinstance(val, dict):
+                    return True, val
+        return True, {"hitl_type": "clarification", "prompt": "Please clarify the problem."}
     except Exception:
         pass
-    return False, None, ""
+    return False, None
+
+
+def retrieve_all_threads() -> list[str]:
+    """
+    Low-level thread id discovery (debugging / migration aid).
+    Uses the checkpointer's checkpoint list (Redis-backed in production).
+    """
+    all_threads: set[str] = set()
+    try:
+        for checkpoint in checkpointer.list(None):
+            tid = checkpoint.config["configurable"].get("thread_id")
+            if tid:
+                all_threads.add(tid)
+    except Exception:
+        return []
+    return list(all_threads)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -564,6 +705,15 @@ _init_session()
 with st.sidebar:
     st.title("🧮 Math Tutor")
 
+    # Profile + logout (sidebar for consistent placement)
+    user = st.session_state.get("google_user") or {}
+    if user:
+        with st.expander("👤 Profile", expanded=False):
+            st.write(f"**Name:** {user.get('name','')}")
+            st.write(f"**Email:** {user.get('email','')}")
+            if st.button("🚪 Logout", use_container_width=True):
+                _logout()
+
     if st.button("➕ New Chat", use_container_width=True):
         reset_chat()
         st.rerun()
@@ -609,19 +759,37 @@ with st.sidebar:
     st.divider()
     st.subheader("💬 Conversations")
 
-    for tid in st.session_state["chat_threads"][::-1]:
+    threads_meta = st.session_state.get("threads_meta") or []
+    # Fallback to raw checkpoint scan if registry empty
+    if not threads_meta:
+        for tid in sorted(retrieve_all_threads(), reverse=True)[:20]:
+            threads_meta.append({"thread_id": tid, "problem_summary": "", "topic": "", "outcome": ""})
+
+    for meta in threads_meta:
+        tid = meta.get("thread_id") or ""
+        if not tid:
+            continue
         is_active = tid == st.session_state["thread_id"]
-        label     = f"{'▶ ' if is_active else ''}{tid[:10]}…"
+        summary   = (meta.get("problem_summary") or "").strip()
+        topic     = (meta.get("topic") or "").strip()
+        outcome   = (meta.get("outcome") or "").strip()
+        title     = summary or f"{tid[:10]}…"
+        suffix    = f" · {topic}" if topic else ""
+        badge     = f" ({outcome})" if outcome and outcome != "in_progress" else ""
+        label     = f"{'▶ ' if is_active else ''}{title}{suffix}{badge}"
+
         if st.button(label, key=f"t_{tid}", use_container_width=True):
-            st.session_state["thread_id"]       = tid
-            st.session_state["message_history"]  = _load_history(tid)
-            st.session_state["pdf_ingested"]     = get_store_info(tid) is not None
-            st.session_state["activity_log"]     = []
-            st.session_state["current_node"]     = None
-            interrupted, question, htype = _check_hitl(tid)
-            st.session_state["hitl_pending"]  = interrupted
-            st.session_state["hitl_question"] = question
-            st.session_state["hitl_type"]     = htype
+            st.session_state["thread_id"] = tid
+            st.session_state["message_history"] = _load_history(tid)
+            st.session_state["pdf_ingested"] = get_store_info(tid) is not None
+            st.session_state["activity_log"] = []
+            st.session_state["current_node"] = None
+
+            interrupted, payload = _check_hitl(tid)
+            st.session_state["hitl_pending"] = interrupted
+            st.session_state["hitl_payload"] = payload
+            st.session_state["hitl_question"] = (payload or {}).get("prompt") or (payload or {}).get("message") if payload else None
+            st.session_state["hitl_type"] = (payload or {}).get("hitl_type", "") if payload else ""
             st.rerun()
 
 
@@ -640,7 +808,18 @@ with col_activity:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with col_chat:
-    st.title("🧮 Math Tutor Agent")
+    # Header row with top-right profile
+    h1, h2 = st.columns([7, 3], vertical_alignment="center")
+    with h1:
+        st.title("🧮 Math Tutor Agent")
+    with h2:
+        user = st.session_state.get("google_user") or {}
+        if user:
+            with st.popover("👤 " + (user.get("name") or "Profile"), use_container_width=True):
+                st.write(f"**Name:** {user.get('name','')}")
+                st.write(f"**Email:** {user.get('email','')}")
+                if st.button("🚪 Logout", use_container_width=True, key="logout_top"):
+                    _logout()
 
     # ── Render conversation history ────────────────────────────────────────────
     # Messages with __HITL__: / __SATQ__: prefix are rendered as styled banners.
@@ -677,15 +856,18 @@ with col_chat:
     # ══════════════════════════════════════════════════════════════════════════
 
     if st.session_state.get("hitl_pending"):
-        question   = st.session_state.get("hitl_question") or "Please clarify."
-        hitl_type  = st.session_state.get("hitl_type", "clarification")
+        payload    = st.session_state.get("hitl_payload") or {}
+        question   = st.session_state.get("hitl_question") or payload.get("prompt") or payload.get("message") or "Please clarify."
+        hitl_type  = st.session_state.get("hitl_type", payload.get("hitl_type") or "clarification")
         tid        = st.session_state["thread_id"]
 
         is_satisfaction = (hitl_type == "satisfaction")
+        is_bad_input    = (hitl_type == "bad_input")
+        is_verification = (hitl_type == "verification")
 
         # ── Activity panel card ───────────────────────────────────────────────
         log       = st.session_state["activity_log"]
-        card_node = "satisfaction_hitl" if is_satisfaction else "hitl_node"
+        card_node = "hitl_node"
         if not log or log[-1]["node"] != card_node:
             _add_step(card_node, status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
@@ -721,6 +903,22 @@ with col_chat:
                 f'</div>',
                 unsafe_allow_html=True,
             )
+        elif is_bad_input:
+            st.markdown(
+                f'<div class="hitl-banner">'
+                f'<div class="hitl-title">🙋 Input Needed</div>'
+                f'<div class="hitl-body">{html.escape(question)}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif is_verification:
+            st.markdown(
+                f'<div class="hitl-banner">'
+                f'<div class="hitl-title">🙋 Verification Needed</div>'
+                f'<div class="hitl-body">{html.escape(question)}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
                 f'<div class="hitl-banner">'
@@ -740,7 +938,7 @@ with col_chat:
 
             human_answer = None
             if satisfied:
-                human_answer = "yes"
+                human_answer = {"satisfied": True, "follow_up": ""}
             elif not_satisfied:
                 with st.form("reexplain_form", clear_on_submit=True):
                     clarify_text = st.text_area(
@@ -750,7 +948,44 @@ with col_chat:
                         label_visibility="visible",
                     )
                     if st.form_submit_button("Submit 🔄", use_container_width=True):
-                        human_answer = clarify_text or "please re-explain"
+                        human_answer = {"satisfied": False, "follow_up": clarify_text or ""}
+
+        elif is_bad_input:
+            with st.form("bad_input_form", clear_on_submit=True):
+                new_text = st.text_area(
+                    "Type the problem (optional)",
+                    placeholder="If uploading again is hard, type it here…",
+                    height=90,
+                )
+                new_image = st.file_uploader("Re-upload image (optional)", type=["png", "jpg", "jpeg"])
+                new_audio = st.file_uploader("Re-upload audio (optional)", type=["wav", "mp3", "m4a"])
+                if st.form_submit_button("Submit ✅", use_container_width=True):
+                    upd: dict = {}
+                    if new_image is not None:
+                        fp = f"uploads/{new_image.name}"
+                        with open(fp, "wb") as fh:
+                            fh.write(new_image.getbuffer())
+                        upd["new_image_path"] = fp
+                    if new_audio is not None:
+                        fp = f"uploads/{new_audio.name}"
+                        with open(fp, "wb") as fh:
+                            fh.write(new_audio.getbuffer())
+                        upd["new_audio_path"] = fp
+                    if new_text and new_text.strip():
+                        upd["raw_text"] = new_text.strip()
+                    human_answer = upd or None
+
+        elif is_verification:
+            with st.form("verification_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    is_correct = st.checkbox("Mark as correct", value=False)
+                with col2:
+                    st.caption("If incorrect, add a short hint below.")
+                fix_hint = st.text_area("Hint (optional)", placeholder="What is wrong / what to fix…", height=80)
+                if st.form_submit_button("Submit ✅", use_container_width=True):
+                    human_answer = {"is_correct": bool(is_correct), "fix_hint": fix_hint.strip()}
+
         else:
             with st.form("hitl_form", clear_on_submit=True):
                 clarify_input = st.text_area(
@@ -760,21 +995,27 @@ with col_chat:
                     label_visibility="collapsed",
                 )
                 if st.form_submit_button("Submit ✅", use_container_width=True):
-                    human_answer = clarify_input
+                    human_answer = {"corrected_text": str(clarify_input or "").strip()}
                 else:
                     human_answer = None
 
         if human_answer is not None and str(human_answer).strip():
-            human_answer = str(human_answer).strip()
+            # human_answer must be dict for hitl_node
 
             # ── Store user reply visibly in history ───────────────────────────
-            label = "✅ Satisfied" if is_satisfaction else "💬 Clarification"
+            label = (
+                "✅ Satisfied" if is_satisfaction else
+                "🖼️ Input" if is_bad_input else
+                "🧾 Verification" if is_verification else
+                "💬 Clarification"
+            )
             st.session_state["message_history"].append(
-                {"role": "user", "content": f"**{label}:** {human_answer}"}
+                {"role": "user", "content": f"**{label}:** {str(human_answer)[:300]}"}
             )
             st.session_state["hitl_pending"]  = False
             st.session_state["hitl_question"] = None
             st.session_state["hitl_type"]     = ""
+            st.session_state["hitl_payload"]  = None
 
             # Mark HITL card done in activity panel
             for step in reversed(st.session_state["activity_log"]):
@@ -784,77 +1025,30 @@ with col_chat:
                     break
             render_activity_panel(activity_ph)
 
-            if is_satisfaction:
-                # ── SATISFACTION PATH ─────────────────────────────────────────
-                # satisfaction_hitl_node paused via interrupt().
-                # The ONLY correct way to resume an interrupt() is to pass
-                # Command(resume=value) as the input to stream/invoke.
-                # update_state alone does NOT resume the interrupt — it just
-                # patches state, causing stream(None) to re-run the node from
-                # the top and hit interrupt() again (the loop bug).
-                response_parts: list[str] = []
+            # ── Resume hitl_node (all HITL types) ─────────────────────────────
+            response_parts: list[str] = []
+            with st.chat_message("assistant"):
+                badge_ph = st.empty()
 
-                if human_answer.lower() in ("yes", "y"):
-                    # User satisfied — drain graph to END, no assistant bubble needed
-                    for _ in chatbot.stream(
+                def _resume_stream():
+                    for event in chatbot.stream(
                         Command(resume=human_answer),
                         config=_cfg(tid),
                         stream_mode="updates",
                     ):
-                        pass  # just drain to END
-                else:
-                    # User not satisfied — re-explain, stream the new response
-                    with st.chat_message("assistant"):
-                        badge_ph = st.empty()
+                        text = _handle_chunk(event, badge_ph)
+                        render_activity_panel(activity_ph)
+                        if text:
+                            response_parts.append(text)
+                            yield text
 
-                        def _sat_stream():
-                            for event in chatbot.stream(
-                                Command(resume=human_answer),
-                                config=_cfg(tid),
-                                stream_mode="updates",
-                            ):
-                                text = _handle_chunk(event, badge_ph)
-                                render_activity_panel(activity_ph)
-                                if text:
-                                    response_parts.append(text)
-                                    yield text
+                st.write_stream(_resume_stream())
 
-                        st.write_stream(_sat_stream())
-
-                    ai_msg = "".join(response_parts)
-                    if ai_msg:
-                        st.session_state["message_history"].append(
-                            {"role": "assistant", "content": ai_msg}
-                        )
-
-            else:
-                # ── CLARIFICATION PATH ────────────────────────────────────────
-                # hitl_node paused via interrupt().
-                # Use Command(resume=value) to correctly resume the interrupt,
-                # then stream processes _route_after_hitl → parser/solver.
-                response_parts: list[str] = []
-                with st.chat_message("assistant"):
-                    badge_ph = st.empty()
-
-                    def _clar_stream():
-                        for event in chatbot.stream(
-                            Command(resume=human_answer),
-                            config=_cfg(tid),
-                            stream_mode="updates",
-                        ):
-                            text = _handle_chunk(event, badge_ph)
-                            render_activity_panel(activity_ph)
-                            if text:
-                                response_parts.append(text)
-                                yield text
-
-                    st.write_stream(_clar_stream())
-
-                ai_msg = "".join(response_parts)
-                if ai_msg:
-                    st.session_state["message_history"].append(
-                        {"role": "assistant", "content": ai_msg}
-                    )
+            ai_msg = "".join(response_parts)
+            if ai_msg:
+                st.session_state["message_history"].append(
+                    {"role": "assistant", "content": ai_msg}
+                )
 
             _mark_all_done()
             render_activity_panel(activity_ph)
@@ -893,11 +1087,12 @@ with col_chat:
                 pass
 
             # Check if graph paused again for another HITL
-            interrupted, q2, htype2 = _check_hitl(tid)
-            if interrupted:
+            interrupted, p2 = _check_hitl(tid)
+            if interrupted and p2:
                 st.session_state["hitl_pending"]  = True
-                st.session_state["hitl_question"] = q2
-                st.session_state["hitl_type"]     = htype2
+                st.session_state["hitl_payload"]  = p2
+                st.session_state["hitl_question"] = p2.get("prompt") or p2.get("message")
+                st.session_state["hitl_type"]     = p2.get("hitl_type", "")
 
             st.rerun()
 
@@ -935,38 +1130,18 @@ with col_chat:
             st.session_state["current_node"] = None
             render_activity_panel(activity_ph)
 
-            # Build agent payload with all TypedDict fields pre-populated
-            payload: dict = {
-                "input_mode":          None,
-                "raw_text":            None,
-                "image_path":          None,
-                "audio_path":          None,
-                "thread_id":           tid,
-                "parsed_data":         None,
-                "solution_plan":       None,
-                "solver_output":       None,
-                "verifier_output":     None,
-                "explainer_output":    None,
-                "solve_iterations":    0,
-                "hitl_required":       False,
-                "hitl_reason":         None,
-                "human_feedback":      None,
-                "retrieved_context":   None,
-                "manim_video_path":    None,
-                "ocr_text":            None,
-                "ocr_confidence":      None,
-                "transcript":          None,
-                "asr_confidence":      None,
-                "user_corrected_text": None,
-                "messages":            [],
-                "agent_payload_log":   [],
-                "conversation_log":    [],
-                "final_response":      None,
-            }
+            # Build initial state via backend helper (includes memory fields)
+            sid = st.session_state["student_id"]
+            payload = make_initial_state(
+                student_id=sid,
+                thread_id=tid,
+                raw_text=None,
+                image_path=None,
+                audio_path=None,
+            )
 
             # ── Populate payload + show user message ──────────────────────────
             if text_input:
-                payload["input_mode"] = "text"
                 payload["raw_text"]   = text_input
                 st.session_state["message_history"].append(
                     {"role": "user", "content": text_input}
@@ -978,7 +1153,6 @@ with col_chat:
                 fp = f"uploads/{image_file.name}"
                 with open(fp, "wb") as fh:
                     fh.write(image_file.getbuffer())
-                payload["input_mode"] = "image"
                 payload["image_path"] = fp
                 st.session_state["message_history"].append(
                     {"role": "user", "content": "[Image uploaded]"}
@@ -990,7 +1164,6 @@ with col_chat:
                 fp = f"uploads/{audio_file.name}"
                 with open(fp, "wb") as fh:
                     fh.write(audio_file.getbuffer())
-                payload["input_mode"] = "audio"
                 payload["audio_path"] = fp
                 st.session_state["message_history"].append(
                     {"role": "user", "content": "[Audio uploaded]"}
@@ -1045,9 +1218,10 @@ with col_chat:
                 pass
 
             # ── Check if graph paused for HITL ────────────────────────────────
-            interrupted, question, htype = _check_hitl(tid)
-            if interrupted:
+            interrupted, p = _check_hitl(tid)
+            if interrupted and p:
                 st.session_state["hitl_pending"]  = True
-                st.session_state["hitl_question"] = question
-                st.session_state["hitl_type"]     = htype
+                st.session_state["hitl_payload"]  = p
+                st.session_state["hitl_question"] = p.get("prompt") or p.get("message")
+                st.session_state["hitl_type"]     = p.get("hitl_type", "")
                 st.rerun()

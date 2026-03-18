@@ -1,199 +1,194 @@
 from agents import *
+from agents.nodes import *
 
 class ExplainerAgent(BaseAgent):
+    """
+    Produces the final student-facing explanation after the verifier confirms
+    the answer is correct.
 
-    def explainer_agent(self, state: AgentState) -> AgentState:
+    Two LLM calls — deliberately split:
+
+    Call 1  →  with_structured_output(ExplainerOutput)
+        Structures the verified raw working into SolutionStep objects,
+        builds key_formulae, key_concepts, common_mistakes, approach_summary.
+        Also sets needs_diagram and manim_hint.
+
+    Call 2  →  plain text, only when needs_diagram=True
+        Generates the Manim scene code from manim_hint.
+        Kept separate because large code strings inside a JSON schema cause
+        Groq 400 errors (tool_use_failed) — plain text call avoids this.
+
+    State written:
+        explainer_output  — ExplainerOutput dict
+        final_response    — rich markdown string rendered in the Streamlit chat bubble
+        manim_scene_code  — raw Python string for manim_node (None if not needed)
+    """
+
+
+    def _build_explanation_prompt(
+        self,
+        problem_text: str,
+        solution_text: str,
+        verifier_verdict: str,
+        topic: str,
+        difficulty: str,
+    ) -> str:
+        return f"""You are an expert JEE mathematics teacher producing a model answer explanation.
+
+        A student submitted this problem and the solver produced a verified correct solution.
+        Your job is to structure the solution into a clear, rigorous explanation that a student
+        who got this wrong can study to understand both the answer and the method.
+
+        MATHEMATICAL NOTATION RULES (follow these exactly):
+        - Use the EXACT variable names from the problem — never rename them.
+        - Integrals   : write ∫ f(x) dx — always include the differential.
+        - Fractions   : (numerator)/(denominator) — fully bracketed.
+        - Powers      : use the form from the problem (x^2 or x²) consistently.
+        - Roots       : √(expr) throughout — never mix with sqrt().
+        - Exact form  : give answers as fractions/surds/π/e/ln, not decimals.
+        - Limits      : lim_{{x → a}} with arrow.
+        - Summations  : Σ_{{k=1}}^{{n}} with explicit bounds.
+        - Vectors     : →a for vector, |→a| for magnitude.
+
+        STEP STRUCTURE:
+        - Each step must show the complete algebraic working line-by-line.
+        - Every manipulation on its own line ending in = the new expression.
+        - step.result is the expression that step circles/underlines — math only.
+        - step.why is ONLY for non-obvious moves (e.g. an unexpected substitution choice).
+        - step.inline_diagram: include a small ASCII/Unicode diagram ONLY when it
+        genuinely clarifies that specific step (number line, triangle, Venn diagram).
+        Leave None for algebraic steps.
+
+        DIAGRAMS:
+        - Set needs_diagram=true if the problem involves geometry, coordinate geometry,
+        vectors, trigonometric graphs, probability trees, or 3D figures.
+        - Set needs_diagram=false for pure algebra, number theory, or arithmetic.
+        - When needs_diagram=true, write manim_hint describing EXACTLY what to animate.
+
+        Problem (topic: {topic} | difficulty: {difficulty}):
+        {problem_text}
+
+        Verified correct solution (use this as your source of truth — do not recompute):
+        {solution_text}
+
+        Verifier notes:
+        {verifier_verdict}"""
+
+
+    def _build_manim_prompt(
+        self,
+        problem_text: str,
+        manim_hint: str,
+        solution_text: str,
+    ) -> str:
+        return f"""Generate complete, runnable Manim Community Edition Python code for a Scene
+        that visualises the following JEE mathematics solution.
+
+        The animation should: {manim_hint}
+
+        Requirements:
+        - Import from manim: from manim import *
+        - Define exactly ONE class that extends Scene (or ThreeDScene for 3D problems).
+        - Fully self-contained — no external files, no user input.
+        - Use MathTex for all equations — proper LaTeX notation.
+        - Use ThreeDScene only if the problem involves 3D geometry.
+        - Keep the animation under 30 seconds total.
+        - Animate the KEY mathematical insight — not every step.
+
+        Problem: {problem_text}
+
+        Solution summary (for context):
+        {solution_text[:600]}
+
+        Reply with ONLY the Python code. No explanation, no markdown fences."""
+
+
+    def explainer_agent(self, state: AgentState) -> dict:
         try:
-            parsed = state.get("parsed_data") or {}
-            problem_text = parsed.get("problem_text") or ""
-            solver_out = state.get("solver_output") or {}
-            solution = solver_out.get("solution", "")
-            plan = state.get("solution_plan") or {}
-            needs_viz = plan.get("needs_visualization", False)
-            viz_hint = plan.get("visualization_hint", "")
+            parsed        = state.get("parsed_data") or {}
+            problem_text  = parsed.get("problem_text") or ""
+            topic         = parsed.get("topic") or "mathematics"
 
-            # ── Step 1: Structured explanation via plain JSON (NO with_structured_output) ──
-            # Reason: Groq's function-calling (used by with_structured_output) produces
-            # 'tool_use_failed' 400 errors when the schema contains long string fields.
-            # Solution: ask for raw JSON as plain text, parse manually.
-            prompt = f"""You are a patient, encouraging JEE math tutor explaining to a student.
+            plan          = state.get("solution_plan") or {}
+            difficulty    = plan.get("difficulty") or "medium"
 
-Produce a JSON object with EXACTLY these keys (no extra keys, no markdown fences):
+            solver_out    = state.get("solver_output") or {}
+            solution_text = solver_out.get("solution", "")
 
-{{
-  "step_by_step": [
-    "Step description with full mathematical working, formulas, substitutions and the result"
-  ],
-  "explanation": "One-paragraph conceptual summary of the approach.",
-  "key_concepts": ["Concept 1", "Concept 2", "Concept 3"],
-  "common_mistakes": ["Mistake 1", "Mistake 2"],
-  "difficulty_rating": "easy | medium | hard"
-}}
+            verifier_out  = state.get("verifier_output") or {}
+            verdict       = verifier_out.get("verdict", "")
 
-Rules:
-- step_by_step: each entry MUST show the actual math — formulas, numbers, algebra — not just a description.
-- Return ONLY the JSON object. No preamble, no explanation, no markdown backticks.
+            prompt = self._build_explanation_prompt(
+                problem_text     = problem_text,
+                solution_text    = solution_text,
+                verifier_verdict = verdict,
+                topic            = topic,
+                difficulty       = difficulty,
+            )
 
-Problem:
-{problem_text}
+            result: ExplainerOutput = self.llm.with_structured_output(ExplainerOutput).invoke(
+                [HumanMessage(content=prompt)]
+            )
 
-Full verified solution (use this as your source of truth for all numbers):
-{solution}"""
+            manim_code: str | None = None
+            if result.needs_diagram and result.manim_hint:
+                logger.info(f"[Explainer] Generating Manim scene: {result.manim_hint[:80]}")
+                manim_prompt = self._build_manim_prompt(
+                    problem_text  = problem_text,
+                    manim_hint    = result.manim_hint,
+                    solution_text = solution_text,
+                )
+                raw = self.llm.invoke([HumanMessage(content=manim_prompt)])
+                code = (raw.content or "").strip()
 
-            plain_llm = self.llm   # plain ChatGroq — no bind_tools, no structured_output
-            raw_response = plain_llm.invoke([HumanMessage(content=prompt)])
-            raw_text = (raw_response.content or "").strip()
-
-            # Strip markdown fences if model adds them anyway
-            if raw_text.startswith("```"):
-                raw_text = "\n".join(
-                    line for line in raw_text.splitlines()
-                    if not line.strip().startswith("```")
-                ).strip()
-
-            # Parse JSON — fall back to safe defaults if malformed
-            try:
-                import json as _json
-                parsed_json = _json.loads(raw_text)
-            except Exception as parse_err:
-                logger.warning(f"[Explainer] JSON parse failed ({parse_err}), using fallback")
-                parsed_json = {
-                    "step_by_step": [solution],
-                    "explanation": solution[:500],
-                    "key_concepts": [],
-                    "common_mistakes": [],
-                    "difficulty_rating": "medium",
-                }
-
-            # Build a simple namespace so the rest of the code can use result.X
-            class _ExplainerResult:
-                def __init__(self, d: dict):
-                    self.step_by_step      = d.get("step_by_step") or []
-                    self.explanation       = d.get("explanation") or ""
-                    self.key_concepts      = d.get("key_concepts") or []
-                    self.common_mistakes   = d.get("common_mistakes") or []
-                    self.difficulty_rating = d.get("difficulty_rating") or "medium"
-                def model_dump(self):
-                    return {
-                        "step_by_step":      self.step_by_step,
-                        "explanation":       self.explanation,
-                        "key_concepts":      self.key_concepts,
-                        "common_mistakes":   self.common_mistakes,
-                        "difficulty_rating": self.difficulty_rating,
-                    }
-
-            result = _ExplainerResult(parsed_json)
-
-            # ── Step 2: Generate Manim code separately (plain text call) ──────
-            # Only requested when needs_viz=True. A plain non-structured call
-            # avoids the Groq 400 'tool_use_failed' error caused by large code
-            # strings being jammed into a function-calling schema.
-            manim_scene_code = None
-            manim_scene_description = None
-            if needs_viz:
-                manim_prompt = f"""Generate complete, runnable Manim Community Edition Python code for a Scene that visualises the following math solution.
-
-The animation should: {viz_hint or "illustrate the key mathematical concept step by step"}.
-
-Requirements:
-- Import from manim (not manimlib): from manim import *
-- Define exactly ONE class that extends Scene
-- Be fully self-contained (no external files, no user input)
-- Use MathTex for all equations
-- Use ThreeDScene if the problem involves 3D geometry
-
-Problem: {problem_text}
-
-Solution summary: {solution[:800]}
-
-Reply with ONLY the Python code. No explanation, no markdown fences, no preamble."""
-
-                plain_llm = self.llm  # plain ChatGroq, no bind_tools/structured_output
-                manim_response = plain_llm.invoke([HumanMessage(content=manim_prompt)])
-                raw_code = (manim_response.content or "").strip()
-                # Strip accidental markdown fences if model adds them
-                if raw_code.startswith("```"):
-                    raw_code = "\n".join(
-                        line for line in raw_code.splitlines()
+                # Strip accidental markdown fences
+                if code.startswith("```"):
+                    code = "\n".join(
+                        line for line in code.splitlines()
                         if not line.strip().startswith("```")
                     ).strip()
-                if raw_code and "class" in raw_code and "Scene" in raw_code:
-                    manim_scene_code = raw_code
-                    manim_scene_description = (
-                        f"Animation visualising: {viz_hint or problem_text[:120]}"
-                    )
-                    logger.info(f"[Explainer] Manim code generated ({len(raw_code)} chars)")
+                if "class" in code and "Scene" in code:
+                    manim_code = code
+                    logger.info(f"[Explainer] Manim code generated ({len(code)} chars)")
                 else:
-                    logger.warning("[Explainer] Manim code generation returned unusable output")
+                    logger.warning("[Explainer] Manim code unusable — skipping")
 
-            # Merge manim fields into the explainer output dict
+            final_md = render_md(result, problem_text)
+
             explainer_dict = result.model_dump()
-            explainer_dict["manim_scene_code"] = manim_scene_code
-            explainer_dict["manim_scene_description"] = manim_scene_description
-            state["explainer_output"] = explainer_dict
+            explainer_dict["manim_scene_code"] = manim_code
 
-            md_parts: list[str] = []
-            md_parts.append(f"## 📘 Solution")
-            md_parts.append(f"**Problem:** {problem_text}\n")
-            md_parts.append("---")
-
-            # ── Conceptual overview ───────────────────────────────────────────
-            if result.explanation:
-                md_parts.append(f"**Overview:** {result.explanation}\n")
-
-            # ── Step-by-step with full mathematical working ───────────────────
-            if result.step_by_step:
-                md_parts.append("### Step-by-Step Working\n")
-                for i, step in enumerate(result.step_by_step, 1):
-                    md_parts.append(f"**Step {i}.** {step}\n")
-
-            # ── Final answer ──────────────────────────────────────────────────
-            final = solver_out.get("final_answer", "")
-            if final:
-                md_parts.append("---")
-                md_parts.append(f"### ✅ Final Answer\n\n> {final}\n")
-
-            # ── Key concepts ──────────────────────────────────────────────────
-            if result.key_concepts:
-                md_parts.append("---")
-                md_parts.append("### 💡 Key Concepts\n")
-                for c in result.key_concepts:
-                    md_parts.append(f"- {c}")
-                md_parts.append("")
-
-            # ── Common mistakes ───────────────────────────────────────────────
-            if result.common_mistakes:
-                md_parts.append("### ⚠️ Common Mistakes to Avoid\n")
-                for m in result.common_mistakes:
-                    md_parts.append(f"- {m}")
-                md_parts.append("")
-
-            rich_md = "\n".join(md_parts)
-
-            # Store ONLY in final_response — NOT in state["messages"].
-            # app.py streams final_response directly to the chat bubble.
-            # Writing to state["messages"] as well causes _load_history to
-            # show the same content twice (once from messages, once from
-            # final_response).
-            state["final_response"] = rich_md
-            # Keep messages clean — store a minimal marker so history reload
-            # knows a solution was produced, but _load_history skips it
-            # because it starts with "## 📘 Solution" (filtered in _load_history).
-            from langchain_core.messages import AIMessage as _AIMsg
-            state["messages"] = [_AIMsg(content=rich_md)]
-
-            _log_payload(state, "explainer_agent",
-                summary=f"{len(result.step_by_step)} steps | difficulty: {result.difficulty_rating}",
-                fields={
-                    "Steps":           str(len(result.step_by_step)),
-                    "Key concepts":    ", ".join(result.key_concepts[:3]) if result.key_concepts else None,
-                    "Common mistakes": ", ".join(result.common_mistakes[:2]) if result.common_mistakes else None,
-                    "Manim code":      "Yes — scene generated" if manim_scene_code else None,
-                    "Difficulty":      result.difficulty_rating,
+            payload(
+                state, "explainer_agent",
+                summary = (
+                    f"{len(result.steps)} steps | "
+                    f"{result.difficulty_rating} | "
+                    f"diagram={'yes' if manim_code else 'no'}"
+                ),
+                fields = {
+                    "Steps":          str(len(result.steps)),
+                    "Key formulae":   str(len(result.key_formulae)),
+                    "Key concepts":   str(len(result.key_concepts)),
+                    "Common mistakes":str(len(result.common_mistakes)),
+                    "Diagram":        str(result.needs_diagram),
+                    "Difficulty":     result.difficulty_rating,
                 },
             )
-            logger.info(f"[Explainer] steps={len(result.step_by_step)} manim={bool(manim_scene_code)}")
-            return state
+            logger.info(
+                f"[Explainer] done | steps={len(result.steps)} "
+                f"manim={bool(manim_code)} difficulty={result.difficulty_rating}"
+            )
+
+            return {
+                "explainer_output": explainer_dict,
+                "final_response":   final_md,
+                "manim_scene_code": manim_code,
+                "hitl_required": True,
+                "hitl_type":  "satisfaction",
+                "hitl_reason": "Explanation delivered — awaiting student feedback.",
+                "follow_up_question": None,
+                "student_satisfied":  None,
+            }
 
         except Exception as e:
             logger.error(f"[Explainer] failed: {e}")
