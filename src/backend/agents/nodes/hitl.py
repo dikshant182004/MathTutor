@@ -1,5 +1,5 @@
-from agents import *
-from agents.nodes import *
+from backend.agents import *
+from backend.agents.nodes import *
 from langgraph.types import interrupt
 
 
@@ -24,25 +24,6 @@ class HITLAgent(BaseAgent):
     │ satisfaction    │ explainer_agent (always)     │ Student thumbs up/down     │
     │                 │ after explanation delivered  │ + optional follow-up       │
     └─────────────────┴──────────────────────────────┴────────────────────────────┘
-
-    How interrupt() works (LangGraph >= 0.2):
-        interrupt(payload) suspends the graph at this node, checkpoints state,
-        and returns control to the caller.  Unlike the old NodeInterrupt
-        exception, interrupt() is a regular function call that RESUMES in the
-        same node and returns the human's response as its return value.
-
-        Flow:
-            human_response = interrupt(payload)   ← suspends here, UI sees payload
-            # resumes here when graph.invoke(Command(resume=response), config) is called
-            return process(human_response)        ← state update returned normally
-
-        On resume from UI:
-            from langgraph.types import Command
-            graph.invoke(Command(resume={"corrected_text": "..."}), config)
-
-    IMPORTANT: Requires a checkpointer in your compiled graph:
-        from langgraph.checkpoint.memory import MemorySaver
-        graph = workflow.compile(checkpointer=MemorySaver())
     """
 
     def hitl_node(self, state: AgentState) -> dict:
@@ -92,13 +73,7 @@ class HITLAgent(BaseAgent):
                 f"[HITL] Suspending graph | type={hitl_type} | reason={reason[:80]}"
             )
 
-            # ── Suspend and wait for human response ───────────────────────────
-            # interrupt() checkpoints state and pauses execution here.
-            # When the graph is resumed via Command(resume=...), execution
-            # continues from this exact line and human_response holds the
-            # dict passed inside Command(resume=...).
             human_response: dict = interrupt(interrupt_payload)
-
             logger.info(f"[HITL] Resumed | type={hitl_type} | response={human_response}")
 
             # ── Process human response into state updates ─────────────────────

@@ -1,6 +1,10 @@
-from agents import *
-from agents.nodes import *
-from tools.tools import has_store
+from backend.agents import *
+from backend.agents.nodes import *
+from backend.agents.nodes.tools.tools import has_store
+from backend.agents.nodes.memory.memory_manager import (
+    trim_messages_if_needed,
+    format_ltm_for_solver,
+)
 
 _TOOLS          = [calculator_tool, web_search_tool]
 _TOOLS_WITH_RAG = [rag_tool, calculator_tool, web_search_tool]
@@ -55,11 +59,16 @@ class SolverAgent(BaseAgent):
         max_attempts:  int,
         rag_available: bool,
         feedback:      str,
+        ltm_hint:      str,
     ) -> SystemMessage:
     
         feedback_block = (
             f"\n\n Previous attempt was INCORRECT.\nVerifier feedback: {feedback}"
             if feedback else ""
+        )
+        ltm_block = (
+            f"\n\nSTUDENT CONTEXT (from past sessions):\n{ltm_hint}"
+            if ltm_hint else ""
         )
         return SystemMessage(content=self._SYSTEM_PROMPT.format(
             tool_guide     = self._TOOL_GUIDE_WITH_RAG if rag_available else self._TOOL_GUIDE_NO_RAG,
@@ -67,6 +76,7 @@ class SolverAgent(BaseAgent):
             attempt        = attempt,
             max_attempts   = max_attempts,
             feedback_block = feedback_block,
+            ltm_block      = ltm_block,
         ))
  
     def _bind_tools(self, rag_available: bool):
@@ -88,11 +98,22 @@ class SolverAgent(BaseAgent):
             problem_text = parsed.get("problem_text") or ""
             plan = state.get("solution_plan") or {}
             strategy = plan.get("solver_strategy", "")
+            topic = parsed.get("topic") or ""
             iteration = state.get("solve_iterations", 0)
             thread_id = state.get("thread_id") or ""
             human_fb = state.get("human_feedback") or ""
             prev_verifier = state.get("verifier_output") or {}
+            ltm_context   = state.get("ltm_context") or {}
             existing_msgs = state.get("messages") or []
+
+            existing_msgs = trim_messages_if_needed(
+                messages  = list(existing_msgs),
+                thread_id = thread_id,
+                llm       = self.llm,
+            )
+ 
+            # ── LTM hint ─────────────────────────────────────────────────────
+            ltm_hint = format_ltm_for_solver(ltm_context, topic) if ltm_context else ""
  
             feedback = prev_verifier.get("suggested_fix") or ""
             if human_fb and not existing_msgs:
@@ -105,6 +126,7 @@ class SolverAgent(BaseAgent):
                 max_attempts  = 3,
                 rag_available = rag_available,
                 feedback      = feedback,
+                ltm_hint      = ltm_hint,
             )
  
             if not existing_msgs:

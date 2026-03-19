@@ -1,4 +1,4 @@
-from agents import List, Optional
+from backend.agents import List, Optional
 from pydantic import BaseModel, Field, model_validator
 from utils.helper import _coerce_bools
 
@@ -30,7 +30,6 @@ class IntentRouterOutput(BaseModel):
     topic:               str           = Field(...,  description="algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory")
     difficulty:          str           = Field(...,  description="easy | medium | hard")
     solver_strategy:     str           = Field(...,  description="Best high-level strategy to solve this problem in 1-3 sentences")
- 
  
  
 class VerifierOutput(BaseModel):

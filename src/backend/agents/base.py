@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from langchain_groq import ChatGroq
-
-from agents import MediaProcessor
-from utils.helper import _get_secret
+from backend.agents.utils.helper import _get_secret, MediaProcessor
 
 
 class BaseAgent:

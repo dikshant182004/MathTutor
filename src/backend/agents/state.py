@@ -13,7 +13,9 @@ class AgentState(TypedDict):
     thread_id:   Optional[str]
 
     ocr_text:        Optional[str]
+    ocr_confidence:  Optional[float] 
     transcript:      Optional[str]
+    asr_confidence:  Optional[float] 
     user_corrected_text: Optional[str]
 
     parsed_data:        Optional[dict]           # ParserOutput
@@ -25,6 +27,8 @@ class AgentState(TypedDict):
     safety_reason: Optional[str]
     explainer_output:   Optional[dict]           # ExplainerOutput
     solve_iterations:   int                      # solver↔verifier loop counter
+
+    manim_scene_code:  Optional[str] 
     manim_video_path:   Optional[str]            # path returned by MCP server
 
     agent_payload_log: Optional[List[dict]]
@@ -60,18 +64,6 @@ def make_initial_state(
     """
     Builds the initial AgentState for a new problem-solving session.
     Call this in your UI layer when the student submits a new problem:
- 
-        from agents.state import make_initial_state
-        from nodes.memory_manager import create_thread
- 
-        thread_id = create_thread(student_id)
-        config    = {"configurable": {"thread_id": thread_id}}
-        state     = make_initial_state(
-            student_id = student_id,
-            thread_id  = thread_id,
-            raw_text   = user_input,   # or image_path / audio_path
-        )
-        result = graph.invoke(state, config)
     """
     return AgentState({
         # Identity

@@ -1,7 +1,7 @@
 import yaml
 import re 
-from agents import *
-from agents.nodes import *
+from backend.agents import *
+from backend.agents.nodes import *
 from functools import lru_cache
 from pathlib import Path
 

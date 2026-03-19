@@ -1,5 +1,5 @@
-from agents import Agent_Exception, logger, MediaProcessor, sys
-from agents.nodes import AgentState
+from backend.agents import Agent_Exception, logger, MediaProcessor, sys
+from backend.agents.nodes import AgentState
 
 
 def detect_input_type(state: AgentState) -> AgentState:

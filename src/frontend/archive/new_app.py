@@ -7,7 +7,7 @@ import uuid
 from typing import Optional
 
 import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
 from authlib.integrations.requests_client import OAuth2Session
@@ -21,6 +21,7 @@ from backend.agents.nodes.memory.memory_manager import (
     load_thread_state,
 )
 from backend.agents.nodes.tools.tools import clear_store, get_store_info, ingest_pdf
+from frontend import AGENT_META, TOOL_META, ANSWER_NODES, HITL_PREFIX, HITL_SAT_PREFIX
 
 st.set_page_config(
     page_title="Math Tutor Agent",
@@ -132,30 +133,6 @@ details[open] .step-payload summary::before { content: "▼ "; }
 </style>
 """, unsafe_allow_html=True)
 
-AGENT_META: dict[str, dict] = {
-    "detect_input":    {"icon": "🔍", "label": "Detect Input Type"},
-    "ocr_node":        {"icon": "📸", "label": "OCR  (Image → Text)"},
-    "asr_node":        {"icon": "🎤", "label": "ASR  (Audio → Text)"},
-    "guardrail_agent": {"icon": "🛡️", "label": "Guardrail Agent"},
-    "retrieve_ltm":    {"icon": "🧠", "label": "Retrieve LTM"},
-    "parser_agent":    {"icon": "🧩", "label": "Parser Agent"},
-    "intent_router":   {"icon": "🗺️",  "label": "Intent Router"},
-    "solver_agent":    {"icon": "🧮", "label": "Solver Agent (ReAct)"},
-    "tool_node":       {"icon": "🔧", "label": "Tool Executor"},
-    "verifier_agent":  {"icon": "✅", "label": "Verifier / Critic"},
-    "safety_agent":    {"icon": "🔒", "label": "Safety Agent"},
-    "explainer_agent": {"icon": "📚", "label": "Explainer / Tutor"},
-    "manim_node":      {"icon": "🎬", "label": "Manim Visualiser"},
-    "hitl_node":       {"icon": "🙋", "label": "Human-in-the-Loop"},
-    "store_ltm":       {"icon": "💾", "label": "Store LTM"},
-}
-
-TOOL_META: dict[str, dict] = {
-    "rag_tool":               {"icon": "📄", "label": "RAG — PDF search"},
-    "web_search_tool":        {"icon": "🌐", "label": "Web Search"},
-    "calculator_tool":        {"icon": "🔢", "label": "Calculator"},
-}
-
 # Only explainer_agent produces the user-facing answer.
 # solver_agent output must NOT be streamed — it's raw reasoning text that
 # would duplicate (and precede) the explainer's formatted markdown.
@@ -173,25 +150,10 @@ _GOOGLE_SCOPE      = "openid email profile"
 
 
 def _logout() -> None:
-    for k in [
-        "oauth_state",
-        "google_user",
-        "student_id",
-        "thread_id",
-        "threads_meta",
-        "message_history",
-        "chat_threads",
-        "activity_log",
-        "hitl_pending",
-        "hitl_question",
-        "hitl_type",
-        "hitl_payload",
-    ]:
-        st.session_state.pop(k, None)
-    try:
-        st.query_params.clear()
-    except Exception:
-        pass
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+    try: st.query_params.clear()
+    except Exception: pass
     st.rerun()
 
 
@@ -476,115 +438,6 @@ def retrieve_all_threads() -> list[str]:
     except Exception:
         return []
     return list(all_threads)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ACTIVITY LOG HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _add_step(
-    node:    str,
-    status:  str  = "done",
-    detail:  str  = "",
-    payload: dict = None,   # structured fields from agent_payload_log
-) -> None:
-    """
-    Append a step card to the activity log.
-    `detail` and all payload values are plain text — html.escape()'d before
-    rendering so no raw HTML can leak into the card template.
-    """
-    meta = AGENT_META.get(node, {"icon": "⚙️", "label": node})
-    st.session_state["activity_log"].append({
-        "node":    node,
-        "icon":    meta["icon"],
-        "label":   meta["label"],
-        "status":  status,
-        "detail":  str(detail)[:120],
-        "payload": payload or {},   # {summary, fields}
-        "ts":      time.strftime("%H:%M:%S"),
-    })
-
-
-def _mark_previous_done(current_node: str) -> None:
-    """Flip any 'active' card that isn't current_node to 'done'."""
-    for step in st.session_state["activity_log"]:
-        if step["status"] == "active" and step["node"] != current_node:
-            step["status"] = "done"
-
-
-def _mark_all_done() -> None:
-    for step in st.session_state["activity_log"]:
-        if step["status"] == "active":
-            step["status"] = "done"
-
-
-def _build_payload_html(payload: dict) -> str:
-    """Build the collapsible <details> section for a card from a payload dict."""
-    if not payload:
-        return ""
-    summary_text = html.escape(str(payload.get("summary", "")))
-    fields: dict = payload.get("fields", {})
-    if not summary_text and not fields:
-        return ""
-
-    rows = ""
-    for k, v in fields.items():
-        if v:
-            rows += (
-                f"<tr><td>{html.escape(str(k))}</td>"
-                f"<td>{html.escape(str(v))}</td></tr>"
-            )
-
-    table_html = f'<table class="payload-table">{rows}</table>' if rows else ""
-
-    return (
-        f'<details class="step-payload">'
-        f'<summary>{summary_text}</summary>'
-        f'{table_html}'
-        f'</details>'
-    )
-
-
-def render_activity_panel(placeholder) -> None:
-    """
-    Rewrite the activity panel placeholder in-place.
-    All text is html.escape()-d — no raw HTML can appear in cards.
-    Cards with payload show a collapsible <details> section with the
-    structured data each agent produced.
-    """
-    log: list[dict] = st.session_state.get("activity_log", [])
-
-    with placeholder.container():
-        st.markdown("### 🤖 Agent Activity")
-
-        if not log:
-            st.caption("Activity will appear here once you send a message.")
-            return
-
-        for step in log:
-            css   = f"step-card {step['status']}"
-            icon  = html.escape(step["icon"])
-            label = html.escape(step["label"])
-            ts    = html.escape(step["ts"])
-
-            detail_html = ""
-            if step.get("detail"):
-                detail_html = f'<p class="step-detail">{html.escape(step["detail"])}</p>'
-
-            payload_html = _build_payload_html(step.get("payload") or {})
-
-            card = (
-                f'<div class="{css}">'
-                f'  <div class="step-header">'
-                f'    <span class="step-label">{icon}&nbsp;{label}</span>'
-                f'    <span class="step-ts">{ts}</span>'
-                f'  </div>'
-                f'  {detail_html}'
-                f'  {payload_html}'
-                f'</div>'
-            )
-            st.markdown(card, unsafe_allow_html=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  STREAM HANDLER

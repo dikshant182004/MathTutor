@@ -4,8 +4,8 @@ import faiss
 import tempfile
 import numpy as np
 import sympy as sp 
-from agents import *
-from nodes.tools import *
+from backend.agents import *
+from backend.agents.nodes.tools import *
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.tools import tool

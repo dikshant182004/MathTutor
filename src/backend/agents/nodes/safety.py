@@ -1,8 +1,8 @@
 import yaml
 from functools import lru_cache
 from pathlib import Path
-from agents import *
-from agents.nodes import *
+from backend.agents import *
+from backend.agents.nodes import *
 
 _GUARDRAILS_DIR = Path(__file__).parent / "security_checks"
 
@@ -32,19 +32,10 @@ class SafetyAgent(BaseAgent):
         final_response — student-facing block message when passed=False
     """
 
-    # Keywords that warrant an immediate block without LLM call
-    _HARD_BLOCK_KEYWORDS = [
-        "synthesise", "synthesize", "synthesis route",
-        "how to make", "manufacture", "explosive",
-        "detonate", "nerve agent", "poison",
-        "self-harm", "suicide method",
-        "child", "minor",          # context-dependent but always worth LLM review
-    ]
-
     def _keyword_check(self, text: str) -> tuple[bool, str]:
         """Returns (is_blocked, reason). Fast — no LLM."""
         lower = text.lower()
-        for kw in self._HARD_BLOCK_KEYWORDS:
+        for kw in _HARD_BLOCK_KEYWORDS:
             if kw in lower:
                 return True, f"keyword match: '{kw}'"
         return False, ""

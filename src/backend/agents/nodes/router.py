@@ -1,5 +1,5 @@
-from agents import *
-from agents.nodes import *
+from backend.agents import *
+from backend.agents.nodes import *
 
 class IntentRouterAgent(BaseAgent):
 

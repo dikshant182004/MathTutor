@@ -1,0 +1,165 @@
+/* ══════════════════════════════════════════════════════
+   AGENT ACTIVITY CARDS
+   ══════════════════════════════════════════════════════ */
+
+.step-card {
+    border-left: 3px solid #4CAF50;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    background: #0e1117;
+    font-size: 0.84rem;
+    color: #e0e0e0;
+    line-height: 1.4;
+}
+
+/* Node currently running — blue pulsing border */
+.step-card.active {
+    border-left-color: #2196F3;
+    background: #0d1f33;
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Tool call fired by solver — orange border */
+.step-card.tool {
+    border-left-color: #FF9800;
+    background: #1a130a;
+}
+
+/* Graph paused waiting for human — red border */
+.step-card.hitl {
+    border-left-color: #F44336;
+    background: #1a0808;
+}
+
+/* Node finished — green border, slightly dimmed */
+.step-card.done {
+    border-left-color: #4CAF50;
+    opacity: 0.72;
+}
+
+.step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+.step-label  { font-weight: 600; }
+.step-ts     { font-size: 0.70rem; color: #666; }
+.step-detail { font-size: 0.76rem; color: #999; margin-top: 3px; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1.0; }
+    50%       { opacity: 0.5; }
+}
+
+/* ══════════════════════════════════════════════════════
+   COLLAPSIBLE PAYLOAD INSIDE EACH CARD
+   ══════════════════════════════════════════════════════ */
+
+.step-payload {
+    margin-top: 6px;
+    border-top: 1px solid #333;
+    padding-top: 5px;
+}
+.step-payload summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: #888;
+    user-select: none;
+    list-style: none;
+    outline: none;
+}
+.step-payload summary::-webkit-details-marker { display: none; }
+.step-payload summary::before                 { content: "▶ "; font-size: 0.65rem; }
+details[open] .step-payload summary::before   { content: "▼ "; }
+
+.payload-table {
+    width: 100%;
+    margin-top: 4px;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+}
+.payload-table td {
+    padding: 2px 4px;
+    vertical-align: top;
+    border-bottom: 1px solid #2a2a2a;
+    color: #ccc;
+    word-break: break-word;
+}
+.payload-table td:first-child {
+    color: #888;
+    white-space: nowrap;
+    padding-right: 8px;
+    font-weight: 600;
+    width: 36%;
+}
+
+/* ══════════════════════════════════════════════════════
+   HITL BANNERS
+   clarification / bad_input / verification  →  red
+   satisfaction                              →  green (modifier class)
+   ══════════════════════════════════════════════════════ */
+
+.hitl-banner {
+    border: 1px solid #F44336;
+    border-radius: 8px;
+    padding: 14px 18px;
+    background: #1a0808;
+    margin-bottom: 14px;
+}
+.hitl-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ff6b6b;
+    margin-bottom: 6px;
+}
+.hitl-body { color: #e0e0e0; font-size: 0.9rem; }
+
+/* Green override for satisfaction banner */
+.hitl-banner.satisfaction {
+    border-color: #4CAF50;
+    background: #0a1a0a;
+}
+.hitl-banner.satisfaction .hitl-title { color: #81C784; }
+
+/* ══════════════════════════════════════════════════════
+   USER PROFILE CARD  (top-right popover + sidebar expander)
+   ══════════════════════════════════════════════════════ */
+
+.profile-card {
+    padding: 10px;
+    font-size: 0.88rem;
+    color: #e0e0e0;
+}
+.profile-card .name  { font-weight: 700; font-size: 1rem; }
+.profile-card .email { color: #999; font-size: 0.78rem; margin-top: 2px; }
+.profile-card .stat  {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    font-size: 0.80rem;
+    color: #b0b8c8;
+}
+.profile-card .stat span { font-weight: 700; color: #90CAF9; }
+
+/* ══════════════════════════════════════════════════════
+   THREAD HISTORY CARDS  (sidebar conversation list)
+   ══════════════════════════════════════════════════════ */
+
+.thread-card {
+    border-left: 3px solid #555;
+    border-radius: 5px;
+    padding: 6px 10px;
+    margin-bottom: 5px;
+    background: #0e1117;
+    font-size: 0.80rem;
+    color: #ccc;
+    cursor: pointer;
+}
+.thread-card.active       { border-left-color: #2196F3; color: #fff; }
+.thread-card .t-topic     { color: #888; font-size: 0.72rem; }
+.thread-card .t-outcome   { font-size: 0.70rem; margin-top: 2px; }
+.thread-card .t-outcome.correct   { color: #4CAF50; }
+.thread-card .t-outcome.incorrect { color: #F44336; }
+.thread-card .t-outcome.hitl      { color: #FF9800; }

@@ -1,7 +1,6 @@
 import json
-import math
 import tempfile
-from agents import (Optional, Tuple, sys, os, logger, Agent_Exception) 
+from backend.agents import (Optional, Tuple, sys, os, logger, Agent_Exception) 
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -41,103 +40,104 @@ def _log_payload(state: dict, node: str, summary: str, fields: dict) -> None:
 
 
 def _render_markdown(result, problem_text: str) -> str:
-        """
-        Convert ExplainerOutput into a rich markdown string for the chat bubble.
-        Structured exactly like a JEE model answer from a coaching institute.
-        """
-        lines: list[str] = []
+    """
+    Convert ExplainerOutput into a rich markdown string for the chat bubble.
+    Structured exactly like a JEE model answer from a coaching institute.
+    """
+    lines: list[str] = []
 
+    lines += [
+        "## 📘 Solution",
+        "",
+        f"**Problem:** {problem_text}",
+        "",
+        "---",
+        "",
+    ]
+
+    # ── Approach summary ──────────────────────────────────────────────────
+    lines += [
+        "### 💡 Approach",
+        "",
+        result.approach_summary,
+        "",
+    ]
+
+    # ── Key formulae box ──────────────────────────────────────────────────
+    if result.key_formulae:
+        lines += ["### 📐 Formulae Used", ""]
+        for f in result.key_formulae:
+            lines.append(f"- {f}")
+        lines.append("")
+
+    lines += ["---", ""]
+
+    # ── Step-by-step working ──────────────────────────────────────────────
+    lines += ["### ✍️ Working", ""]
+
+    for step in result.steps:
         lines += [
-            "## 📘 Solution",
-            "",
-            f"**Problem:** {problem_text}",
-            "",
-            "---",
+            f"**Step {step.step_number} — {step.heading}**",
             "",
         ]
+        # Working block — preserve line breaks, use code-style for equations
+        working_lines = step.working.strip().splitlines()
+        for wl in working_lines:
+            lines.append(f"&emsp;{wl}")
+        lines.append("")
+        lines.append(f"&emsp;∴ &nbsp; `{step.result}`")
+        lines.append("")
 
-        # ── Approach summary ──────────────────────────────────────────────────
-        lines += [
-            "### 💡 Approach",
-            "",
-            result.approach_summary,
-            "",
-        ]
-
-        # ── Key formulae box ──────────────────────────────────────────────────
-        if result.key_formulae:
-            lines += ["### 📐 Formulae Used", ""]
-            for f in result.key_formulae:
-                lines.append(f"- {f}")
-            lines.append("")
-
-        lines += ["---", ""]
-
-        # ── Step-by-step working ──────────────────────────────────────────────
-        lines += ["### ✍️ Working", ""]
-
-        for step in result.steps:
+        # Optional inline diagram
+        if step.inline_diagram:
             lines += [
-                f"**Step {step.step_number} — {step.heading}**",
+                "```",
+                step.inline_diagram.strip(),
+                "```",
                 "",
             ]
-            # Working block — preserve line breaks, use code-style for equations
-            working_lines = step.working.strip().splitlines()
-            for wl in working_lines:
-                lines.append(f"&emsp;{wl}")
-            lines.append("")
-            lines.append(f"&emsp;∴ &nbsp; `{step.result}`")
-            lines.append("")
 
-            # Optional inline diagram
-            if step.inline_diagram:
-                lines += [
-                    "```",
-                    step.inline_diagram.strip(),
-                    "```",
-                    "",
-                ]
+        # Optional why — indented note
+        if step.why:
+            lines += [
+                f"> 📎 *{step.why}*",
+                "",
+            ]
 
-            # Optional why — indented note
-            if step.why:
-                lines += [
-                    f"> 📎 *{step.why}*",
-                    "",
-                ]
+    lines += ["---", ""]
 
-        lines += ["---", ""]
+    # ── Final answer — boxed ──────────────────────────────────────────────
+    lines += [
+        "### ✅ Final Answer",
+        "",
+        f"> ### {result.final_answer}",
+        "",
+        "---",
+        "",
+    ]
 
-        # ── Final answer — boxed ──────────────────────────────────────────────
-        lines += [
-            "### ✅ Final Answer",
-            "",
-            f"> ### {result.final_answer}",
-            "",
-            "---",
-            "",
-        ]
+    # ── Key concepts ──────────────────────────────────────────────────────
+    if result.key_concepts:
+        lines += ["### 🧠 Key Concepts", ""]
+        for c in result.key_concepts:
+            lines.append(f"- {c}")
+        lines.append("")
 
-        # ── Key concepts ──────────────────────────────────────────────────────
-        if result.key_concepts:
-            lines += ["### 🧠 Key Concepts", ""]
-            for c in result.key_concepts:
-                lines.append(f"- {c}")
-            lines.append("")
+    # ── Common mistakes ───────────────────────────────────────────────────
+    if result.common_mistakes:
+        lines += ["### ⚠️ Common Mistakes", ""]
+        for m in result.common_mistakes:
+            lines.append(f"- {m}")
+        lines.append("")
 
-        # ── Common mistakes ───────────────────────────────────────────────────
-        if result.common_mistakes:
-            lines += ["### ⚠️ Common Mistakes", ""]
-            for m in result.common_mistakes:
-                lines.append(f"- {m}")
-            lines.append("")
+    # ── Difficulty badge ──────────────────────────────────────────────────
+    badge = {"easy": "🟢 Easy", "medium": "🟡 Medium", "hard": "🔴 Hard"}.get(
+        result.difficulty_rating.lower(), result.difficulty_rating
+    )
+    lines.append(f"*Difficulty: {badge}*")
 
-        # ── Difficulty badge ──────────────────────────────────────────────────
-        badge = {"easy": "🟢 Easy", "medium": "🟡 Medium", "hard": "🔴 Hard"}.get(
-            result.difficulty_rating.lower(), result.difficulty_rating
-        )
-        lines.append(f"*Difficulty: {badge}*")
+    return "\n".join(lines)
 
-        return "\n".join(lines)
 
 def _get_secret(key: str, default: str = "") -> str:
     """
@@ -154,13 +154,13 @@ def _get_secret(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 
-
 class MediaProcessor:
 
     def __init__(self):
         self.vision_client: Optional[vision.ImageAnnotatorClient] = None
         self.groq_client: Optional[Groq] = None
         self._initialize_clients()
+
 
     def _initialize_clients(self) -> None:
         # ── Google Vision (OCR) ───────────────────────────────────────────────
@@ -214,6 +214,7 @@ class MediaProcessor:
         )
         return None
     
+
     def process_image(self, image_input) -> Tuple[str, float]:
 
         if not self.vision_client:
@@ -254,6 +255,7 @@ class MediaProcessor:
         except Exception as exc:
             logger.error(f"[OCR] Error: {exc}")
             raise Agent_Exception(exc, sys)
+
 
     def process_audio(self, audio_input) -> Tuple[str, float]:
 
@@ -299,6 +301,7 @@ class MediaProcessor:
                 except OSError:
                     pass
 
+
     def _estimate_vision_confidence(self, response) -> float:
         """Derive a confidence score from Vision API block confidences."""
         try:
@@ -314,6 +317,7 @@ class MediaProcessor:
         except Exception:
             return 0.7
 
+
     def _estimate_transcription_confidence(self, transcript: str) -> float:
         """Heuristic confidence for Whisper (no per-word probs in Groq API)."""
         if not transcript:
@@ -328,6 +332,7 @@ class MediaProcessor:
             if marker.lower() in transcript.lower():
                 score -= 0.1
         return round(max(0.0, min(1.0, score)), 3)
+
 
     def clean_extracted_text(self, text: str) -> str:
         """Remove common OCR noise and normalise whitespace."""
