@@ -1,3 +1,8 @@
+import asyncio
+from backend.agents import Optional, logger
+from backend.agents.nodes import AgentState
+from backend.agents.utils.helper import _get_secret
+
 async def _call_manim_mcp(scene_code: str, scene_class: str) -> Optional[str]:
     """
     Calls the FastMCP Manim server via streamable-http transport.

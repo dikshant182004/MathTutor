@@ -219,6 +219,7 @@ def _process_bad_input_response(r: dict) -> dict:
     """Clears stale media outputs so ocr_node / asr_node re-run cleanly."""
     update: dict = {
         "hitl_required":  False,
+        "hitl_type":      None,
         "hitl_interrupt": None,
         "hitl_reason":    None,
         "ocr_text":       None,
@@ -243,6 +244,7 @@ def _process_clarification_response(r: dict) -> dict:
     return {
         "user_corrected_text": r.get("corrected_text", "").strip(),
         "hitl_required":       False,
+        "hitl_type":           None,
         "hitl_interrupt":      None,
         "hitl_reason":         None,
         "parsed_data":         None,
@@ -269,6 +271,7 @@ def _process_verification_response(r: dict) -> dict:
         "verifier_output": verifier_override,
         "human_feedback":  fix_hint if fix_hint else None,
         "hitl_required":   False,
+        "hitl_type":       None,
         "hitl_interrupt":  None,
         "hitl_reason":     None,
     }
@@ -280,6 +283,7 @@ def _process_satisfaction_response(r: dict) -> dict:
         "student_satisfied":  bool(r.get("satisfied", False)),
         "follow_up_question": r.get("follow_up", "").strip() or None,
         "hitl_required":      False,
+        "hitl_type":          None,
         "hitl_interrupt":     None,
         "hitl_reason":        None,
     }

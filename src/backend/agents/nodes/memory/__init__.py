@@ -1,7 +1,8 @@
 import os
-from backend.agents.nodes.tools import EMBED_DIM
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://:jee_secret@localhost:6379")
+
+EMBED_DIM = 1024
 
 # ── STM trimming thresholds ────────────────────────────────────────────────────
 # Tokens are counted with tiktoken (gpt-4o encoding) as a fast local proxy.

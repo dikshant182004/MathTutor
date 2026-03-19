@@ -1,5 +1,5 @@
-from agents import *
-from agents.nodes import *
+from backend.agents import *
+from backend.agents.nodes import *
 
 class VerifierAgent(BaseAgent):
 
@@ -12,7 +12,7 @@ class VerifierAgent(BaseAgent):
             solution     = solver_out.get("solution", "")
             final_answer = solver_out.get("final_answer", "")
 
-            _VERIFIER_PROMPT = f"""You are a strict mathematical verifier for JEE-level problems.
+            _VERIFIER_PROMPT = """You are a strict mathematical verifier for JEE-level problems.
  
                 Check the solution below against the problem on three criteria:
                 1. Correctness   — is every algebraic step valid? Cite the step number if not.

@@ -1,5 +1,7 @@
 from backend.agents import *
 from backend.agents.nodes import *
+from backend.agents.nodes.memory.memory_manager import format_ltm_for_explainer   
+
 
 class ExplainerAgent(BaseAgent):
     """
@@ -24,7 +26,6 @@ class ExplainerAgent(BaseAgent):
         manim_scene_code  — raw Python string for manim_node (None if not needed)
     """
 
-
     def _build_explanation_prompt(
         self,
         problem_text: str,
@@ -32,8 +33,9 @@ class ExplainerAgent(BaseAgent):
         verifier_verdict: str,
         topic: str,
         difficulty: str,
+        ltm_hint: str,         
     ) -> str:
-        return f"""You are an expert JEE mathematics teacher producing a model answer explanation.
+        base = f"""You are an expert JEE mathematics teacher producing a model answer explanation.
 
         A student submitted this problem and the solver produced a verified correct solution.
         Your job is to structure the solution into a clear, rigorous explanation that a student
@@ -74,6 +76,16 @@ class ExplainerAgent(BaseAgent):
         Verifier notes:
         {verifier_verdict}"""
 
+        if ltm_hint:
+            base += f"""
+
+        STUDENT PERSONALISATION (use this to tailor your explanation):
+        {ltm_hint}
+
+        Based on the above, ensure common_mistakes directly addresses the student's known
+        error patterns, and key_concepts front-loads the concepts they historically struggle with."""
+
+        return base
 
     def _build_manim_prompt(
         self,
@@ -102,7 +114,6 @@ class ExplainerAgent(BaseAgent):
 
         Reply with ONLY the Python code. No explanation, no markdown fences."""
 
-
     def explainer_agent(self, state: AgentState) -> dict:
         try:
             parsed        = state.get("parsed_data") or {}
@@ -118,12 +129,17 @@ class ExplainerAgent(BaseAgent):
             verifier_out  = state.get("verifier_output") or {}
             verdict       = verifier_out.get("verdict", "")
 
+            # 4a — pull LTM context and format personalisation hint
+            ltm_context = state.get("ltm_context") or {}
+            ltm_hint    = format_ltm_for_explainer(ltm_context, topic)
+
             prompt = self._build_explanation_prompt(
                 problem_text     = problem_text,
                 solution_text    = solution_text,
                 verifier_verdict = verdict,
                 topic            = topic,
                 difficulty       = difficulty,
+                ltm_hint         = ltm_hint,    
             )
 
             result: ExplainerOutput = self.llm.with_structured_output(ExplainerOutput).invoke(
@@ -138,7 +154,7 @@ class ExplainerAgent(BaseAgent):
                     manim_hint    = result.manim_hint,
                     solution_text = solution_text,
                 )
-                raw = self.llm.invoke([HumanMessage(content=manim_prompt)])
+                raw  = self.llm.invoke([HumanMessage(content=manim_prompt)])
                 code = (raw.content or "").strip()
 
                 # Strip accidental markdown fences
@@ -163,7 +179,8 @@ class ExplainerAgent(BaseAgent):
                 summary = (
                     f"{len(result.steps)} steps | "
                     f"{result.difficulty_rating} | "
-                    f"diagram={'yes' if manim_code else 'no'}"
+                    f"diagram={'yes' if manim_code else 'no'} | "
+                    f"personalised={'yes' if ltm_hint else 'no'}"   
                 ),
                 fields = {
                     "Steps":          str(len(result.steps)),
@@ -172,20 +189,22 @@ class ExplainerAgent(BaseAgent):
                     "Common mistakes":str(len(result.common_mistakes)),
                     "Diagram":        str(result.needs_diagram),
                     "Difficulty":     result.difficulty_rating,
+                    "LTM hint":       ltm_hint[:80] if ltm_hint else "none", 
                 },
             )
             logger.info(
                 f"[Explainer] done | steps={len(result.steps)} "
-                f"manim={bool(manim_code)} difficulty={result.difficulty_rating}"
+                f"manim={bool(manim_code)} difficulty={result.difficulty_rating} "
+                f"ltm_personalised={bool(ltm_hint)}"
             )
 
             return {
                 "explainer_output": explainer_dict,
                 "final_response":   final_md,
                 "manim_scene_code": manim_code,
-                "hitl_required": True,
-                "hitl_type":  "satisfaction",
-                "hitl_reason": "Explanation delivered — awaiting student feedback.",
+                "hitl_required":    True,
+                "hitl_type":        "satisfaction",
+                "hitl_reason":      "Explanation delivered — awaiting student feedback.",
                 "follow_up_question": None,
                 "student_satisfied":  None,
             }

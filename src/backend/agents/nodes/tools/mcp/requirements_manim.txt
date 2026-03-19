@@ -1,0 +1,4 @@
+manim
+fastmcp
+uvicorn
+ 

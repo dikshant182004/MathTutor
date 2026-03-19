@@ -1,4 +1,4 @@
-from utils.helper import _get_secret
+from backend.agents.utils.helper import _get_secret
 
 
 COHERE_EMBED_MODEL     = "embed-english-v3.0"

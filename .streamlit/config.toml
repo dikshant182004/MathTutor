@@ -1,0 +1,27 @@
+# .streamlit/config.toml
+# Streamlit server + theme configuration.
+
+
+[server]
+port                = 8501
+address             = "0.0.0.0"
+headless            = true
+# Disable file watcher in production (saves CPU; restart manually to pick up changes)
+fileWatcherType     = "none"
+# Max upload size in MB — increase if students upload large PDFs
+maxUploadSize       = 50
+# Increase timeout for slow LLM + Manim renders
+maxMessageSize      = 200
+
+[browser]
+gatherUsageStats    = false
+serverAddress       = "localhost"
+serverPort          = 8501
+
+[theme]
+base                = "dark"
+primaryColor        = "#3B82F6"
+backgroundColor     = "#0e1117"
+secondaryBackgroundColor = "#1a1f2e"
+textColor           = "#e0e0e0"
+font                = "sans serif"
