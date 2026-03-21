@@ -11,17 +11,6 @@ from backend.agents.utils.artifacts import (
 )
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
 
-__output__ = [
-    ParserOutput,
-    IntentRouterOutput,
-    VerifierOutput,
-    ExplainerOutput,
-    GuardrailOutput,
-    SafetyOutput,
-]
-__tools__ = [rag_tool, web_search_tool, calculator_tool]
-
-
 # Keywords that warrant an immediate block without LLM call
 _HARD_BLOCK_KEYWORDS = [
     "synthesise", "synthesize", "synthesis route",
@@ -32,12 +21,8 @@ _HARD_BLOCK_KEYWORDS = [
 ]
 
 __all__ = [
-    "BaseAgent",
-    "AgentState",
-    "payload",
-    "render_md",
-    "_HARD_BLOCK_KEYWORDS",
-    *__output__,
-    *__tools__,
+    "BaseAgent", "AgentState", "payload", "render_md", "_HARD_BLOCK_KEYWORDS",
+    "ParserOutput", "IntentRouterOutput", "VerifierOutput", "ExplainerOutput", "GuardrailOutput", "SafetyOutput",
+    "rag_tool", "web_search_tool", "calculator_tool"
 ]
 

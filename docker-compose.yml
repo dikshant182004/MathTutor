@@ -65,29 +65,29 @@ services:
   # Requires a Dockerfile.manim in src/backend/agents/nodes/tools/mcp/.
   # See the Dockerfile.manim template included alongside this file.
   # ─────────────────────────────────────────────────────────────────────────────
-  manim-mcp:
-    build:
-      context: ./src/backend/agents/nodes/tools/mcp
-      dockerfile: Dockerfile.manim
-    container_name: jee_manim_mcp
-    restart: unless-stopped
-    ports:
-      - "8765:8765"
-    volumes:
-      - ./manim_outputs:/app/manim_outputs
-    environment:
-      - MANIM_OUTPUT_DIR=/app/manim_outputs
-      - MANIM_SERVER_PORT=8765
-      - MANIM_PYTHON=/usr/local/bin/python3
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8765/mcp"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    depends_on:
-      redis:
-        condition: service_healthy
+  # manim-mcp:
+  #   build:
+  #     context: ./src/backend/agents/nodes/tools/mcp
+  #     dockerfile: Dockerfile.manim
+  #   container_name: jee_manim_mcp
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8765:8765"
+  #   volumes:
+  #     - ./manim_outputs:/app/manim_outputs
+  #   environment:
+  #     - MANIM_OUTPUT_DIR=/app/manim_outputs
+  #     - MANIM_SERVER_PORT=8765
+  #     - MANIM_PYTHON=/usr/local/bin/python3
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8765/mcp"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 20s
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
 
   # ── Streamlit App (optional — uncomment to containerise) ─────────────────────
   # app:

@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
-from authlib.integrations.requests_client import OAuth2Session
+from langgraph.errors import GraphInterrupt
 
 from backend.agents.graph import chatbot, checkpointer
 from backend.agents.state import make_initial_state
@@ -13,6 +13,7 @@ from backend.agents.utils.db_utils import (
 )
 from backend.agents.nodes.tools.tools import clear_store, get_store_info, ingest_pdf
 
+from frontend.templates.login import render_login_page
 from frontend import st, TOOL_META, ANSWER_NODES, HITL_PREFIX, HITL_SAT_PREFIX, Path, Optional
 from frontend.templates.activity_panel import (
     render_activity_panel, add_step,
@@ -30,65 +31,19 @@ st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("manim_outputs", exist_ok=True)
 
-# ── OAuth constants ───────────────────────────────────────────────────────────
-_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
-_TOKEN_URL = "https://oauth2.googleapis.com/token"
-_USERINFO  = "https://www.googleapis.com/oauth2/v3/userinfo"
-_SCOPE     = "openid email profile"
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  AUTH
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _handle_oauth_callback() -> None:
-    """Exchange Google ?code= for user info, create/update Redis user record."""
-    code = dict(st.query_params).get("code")
-    if not code:
-        return
-
-    cid  = st.secrets.get("GOOGLE_CLIENT_ID", "")
-    csec = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
-    ruri = st.secrets.get("OAUTH_REDIRECT_URI", "")
-    if not all([cid, csec, ruri]):
-        st.error("OAuth secrets not configured."); st.stop()
-
-    oauth = OAuth2Session(client_id=cid, client_secret=csec, scope=_SCOPE, redirect_uri=ruri)
-    oauth.token = oauth.fetch_token(_TOKEN_URL, code=code, client_secret=csec)
-    user  = oauth.get(_USERINFO).json()
-    email = (user or {}).get("email", "")
-    name  = (user or {}).get("name", email.split("@")[0])
-    if not email:
-        st.error("No email from Google."); st.stop()
-
-    sid = get_or_create_user(email=email, display_name=name)
-    st.session_state["google_user"] = {"email": email, "name": name}
-    st.session_state["student_id"]  = sid
-    try:
-        st.query_params.clear()
-    except Exception:
-        pass
-
-
-def _require_login() -> None:
-    _handle_oauth_callback()
-
-    if st.session_state.get("student_id"):
-        return
-
-    st.title("🧮 JEE Math Tutor")
-    st.info("Please sign in with your Google account to continue.")
-    cid  = st.secrets.get("GOOGLE_CLIENT_ID", "")
-    csec = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
-    ruri = st.secrets.get("OAUTH_REDIRECT_URI", "")
-    if not all([cid, csec, ruri]):
-        st.warning("Configure OAuth secrets (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI)."); st.stop()
-    oauth = OAuth2Session(client_id=cid, client_secret=csec, scope=_SCOPE, redirect_uri=ruri)
-    uri, state = oauth.create_authorization_url(_AUTH_URL, access_type="offline", prompt="consent")
-    st.session_state["oauth_state"] = state
-    st.link_button("Continue with Google", uri, use_container_width=True, type="primary")
+if not st.user.is_logged_in:
+    render_login_page()
     st.stop()
 
+# ── Resolve student identity from Google account ─────────────────────────────
+_email = st.user.email or ""
+_name  = st.user.name  or _email.split("@")[0]
+
+if "student_id" not in st.session_state:
+    st.session_state["student_id"] = get_or_create_user(
+        email        = _email,
+        display_name = _name,
+    )
 
 def _logout() -> None:
     for k in list(st.session_state.keys()):
@@ -109,7 +64,6 @@ def _cfg(tid: str) -> dict:
 
 
 def _init_session() -> None:
-    _require_login()
     sid = st.session_state["student_id"]
 
     # Bug 4 fix — "user_profile" included in defaults so it is always initialised
@@ -656,15 +610,18 @@ with col_chat:
                 bph = st.empty()
 
                 def _resume():
-                    for ev in chatbot.stream(
-                        Command(resume=human_answer),
-                        config=_cfg(tid), stream_mode="updates",
-                    ):
-                        t = _handle_chunk(ev, bph)
-                        render_activity_panel(activity_ph)
-                        if t:
-                            parts.append(t)
-                            yield t
+                    try:
+                        for ev in chatbot.stream(
+                            Command(resume=human_answer),
+                            config=_cfg(tid), stream_mode="updates",
+                        ):
+                            t = _handle_chunk(ev, bph)
+                            render_activity_panel(activity_ph)
+                            if t:
+                                parts.append(t)
+                                yield t
+                    except GraphInterrupt:
+                        pass
 
                 st.write_stream(_resume())
 
@@ -778,13 +735,16 @@ with col_chat:
                 rparts: list[str] = []
 
                 def _stream():
-                    for ev in chatbot.stream(sp, config=_cfg(tid), stream_mode="updates"):
-                        t = _handle_chunk(ev, bph)
-                        render_activity_panel(activity_ph)
-                        if t:
-                            rparts.append(t)
-                            yield t
-
+                    try:
+                        for ev in chatbot.stream(sp, config=_cfg(tid), stream_mode="updates"):
+                            t = _handle_chunk(ev, bph)
+                            render_activity_panel(activity_ph)
+                            if t:
+                                rparts.append(t)
+                                yield t
+                    except GraphInterrupt:
+                        pass 
+                    
                 st.write_stream(_stream())
 
             mark_all_done()

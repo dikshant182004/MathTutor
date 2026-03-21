@@ -12,6 +12,19 @@ class VerifierAgent(BaseAgent):
             solution     = solver_out.get("solution", "")
             final_answer = solver_out.get("final_answer", "")
 
+            # Add this right after reading solver_out, before building the prompt:
+            if not solution.strip():
+                logger.warning("[Verifier] Empty solution received — routing back to solver")
+                return {
+                    "verifier_output": {
+                        "status":        "incorrect",
+                        "verdict":       "No solution text was produced by the solver.",
+                        "suggested_fix": "The solver must produce a complete written solution. Do not call tools without following up with written working.",
+                        "confidence":    0.0,
+                        "hitl_reason":   None,
+                    }
+                }
+
             _VERIFIER_PROMPT = """You are a strict mathematical verifier for JEE-level problems.
  
                 Check the solution below against the problem on three criteria:
@@ -39,8 +52,8 @@ class VerifierAgent(BaseAgent):
  
             result: VerifierOutput = self.llm.with_structured_output(VerifierOutput).invoke([
                 HumanMessage(content=_VERIFIER_PROMPT.format(
-                    problem      = problem_text,
-                    attempt      = iteration,
+                    problem_text      = problem_text,
+                    iteration      = iteration,
                     solution     = solution,
                     final_answer = final_answer,
                 ))

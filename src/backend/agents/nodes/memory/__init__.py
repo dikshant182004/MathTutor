@@ -33,19 +33,20 @@ EPISODIC_INDEX_SCHEMA = {
         "storage_type": "json",
     },
     "fields": [
-        {"name": "$.student_id",  "type": "tag",     "as": "student_id"},
-        {"name": "$.topic",       "type": "tag",     "as": "topic"},
-        {"name": "$.difficulty",  "type": "tag",     "as": "difficulty"},
-        {"name": "$.outcome",     "type": "tag",     "as": "outcome"},
-        {"name": "$.timestamp",   "type": "numeric", "as": "timestamp"},
-        {"name": "$.decay_score", "type": "numeric", "as": "decay_score"},
+        {"name": "student_id",  "type": "tag",     "path": "$.student_id"},
+        {"name": "topic",       "type": "tag",     "path": "$.topic"},
+        {"name": "difficulty",  "type": "tag",     "path": "$.difficulty"},
+        {"name": "outcome",     "type": "tag",     "path": "$.outcome"},
+        {"name": "timestamp",   "type": "numeric", "path": "$.timestamp"},
+        {"name": "decay_score", "type": "numeric", "path": "$.decay_score"},
         {
-            "name": "$.embedding",
+            "name": "embedding",
             "type": "vector",
+            "path": "$.embedding",
             "attrs": {
                 "algorithm":       "HNSW",
                 "datatype":        "FLOAT32",
-                "dims":            EMBED_DIM,          # 1024 for Cohere
+                "dims":            EMBED_DIM,
                 "distance_metric": "COSINE",
             },
         },

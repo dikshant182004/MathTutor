@@ -1,6 +1,6 @@
 from backend.agents import List, Optional
 from pydantic import BaseModel, Field, model_validator
-from utils.helper import _coerce_bools
+from backend.agents.utils.helper import _coerce_bools
 
 
 class ParserOutput(BaseModel):

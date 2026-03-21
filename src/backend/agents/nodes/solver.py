@@ -66,14 +66,15 @@ class SolverAgent(BaseAgent):
         - rag_tool            → search the uploaded document FIRST for relevant theorems/formulae.
                                 Use a focused query like "integration by parts formula", not the full problem.
                                 If it returns nothing useful, fall back to web_search_tool.
-        - symbolic_calculator → ALL arithmetic and symbolic work (differentiation, integration,
-                                solving equations, matrix ops). Pass valid SymPy syntax.
-                                Returns LaTeX — paste it directly into your working.
+        - symbolic_calculator → ONLY for large factorials, high-precision decimals,
+                                or large matrix operations. NOT for basic probability,
+                                simple integrals, or routine algebra.
         - web_search_tool     → external formulae or theory when rag_tool finds nothing."""
 
     _TOOL_GUIDE_NO_RAG = """\
-        - symbolic_calculator → ALL arithmetic and symbolic work. Pass valid SymPy syntax.
-                                Returns LaTeX — paste it directly into your working.
+        - symbolic_calculator → ONLY for large factorials, high-precision decimals,
+                                or large matrix operations. NOT for basic probability,
+                                simple integrals, or routine algebra.
         - web_search_tool     → formulae or theory you need to look up."""
 
     def _build_system(
@@ -179,8 +180,19 @@ class SolverAgent(BaseAgent):
                 return updates
 
             solution_text = response.content or ""
+            if not solution_text.strip():
+                logger.warning("[Solver] Empty solution text after tool loop — forcing retry signal")
+                return {
+                    "solve_iterations": iteration + 1,
+                    "solver_output": {
+                        "solution":         "",
+                        "final_answer":     "",
+                        "rag_context_used": False,
+                        "calculator_used":  False,
+                    },
+                }
 
-            all_msgs  = messages + [response]
+            all_msgs = list(state.get("messages") or []) + [response]
             calc_used = any(
                 isinstance(m, ToolMessage) and "calculator" in (m.name or "").lower()
                 for m in all_msgs

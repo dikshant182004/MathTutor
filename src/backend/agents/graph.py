@@ -5,7 +5,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from backend.agents import Agent_Exception, logger, sys, _MEDIA_CONF_THRESHOLD
-from backend.agents.base import BaseAgent
 from backend.agents.state import AgentState
 
 from backend.agents.nodes.input import asr_node, detect_input_type, ocr_node
@@ -230,7 +229,6 @@ def _asr_node_with_confidence_gate(state: AgentState) -> AgentState:
 # ── Workflow class ─────────────────────────────────────────────────────────────
 
 class MathTutorWorkflow(
-    BaseAgent,
     GuardrailAgent,
     ParserAgent,
     IntentRouterAgent,

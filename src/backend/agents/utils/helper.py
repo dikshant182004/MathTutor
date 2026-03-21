@@ -1,11 +1,17 @@
 import json
 import tempfile
-from backend.agents import (Optional, Tuple, sys, os, logger, Agent_Exception) 
+import os
+import sys
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 from groq import Groq
 from google.cloud import vision
 from google.oauth2 import service_account
+from backend.exceptions import Agent_Exception
+from backend.logger import get_logger
+
+logger = get_logger(__name__)
 
 load_dotenv()
 
@@ -42,10 +48,10 @@ def _log_payload(state: dict, node: str, summary: str, fields: dict) -> None:
 def _render_markdown(result, problem_text: str) -> str:
     """
     Convert ExplainerOutput into a rich markdown string for the chat bubble.
-    Structured exactly like a JEE model answer from a coaching institute.
     """
     lines: list[str] = []
 
+    # ── Header ────────────────────────────────────────────────────────────────
     lines += [
         "## 📘 Solution",
         "",
@@ -55,7 +61,7 @@ def _render_markdown(result, problem_text: str) -> str:
         "",
     ]
 
-    # ── Approach summary ──────────────────────────────────────────────────
+    # ── Approach summary ──────────────────────────────────────────────────────
     lines += [
         "### 💡 Approach",
         "",
@@ -63,30 +69,41 @@ def _render_markdown(result, problem_text: str) -> str:
         "",
     ]
 
-    # ── Key formulae box ──────────────────────────────────────────────────
+    # ── Key formulae ──────────────────────────────────────────────────────────
     if result.key_formulae:
         lines += ["### 📐 Formulae Used", ""]
         for f in result.key_formulae:
-            lines.append(f"- {f}")
+            lines += [
+                f"- $${f}$$",
+            ]
         lines.append("")
 
     lines += ["---", ""]
 
-    # ── Step-by-step working ──────────────────────────────────────────────
+    # ── Step-by-step working ──────────────────────────────────────────────────
     lines += ["### ✍️ Working", ""]
 
     for step in result.steps:
+        # Step heading
         lines += [
             f"**Step {step.step_number} — {step.heading}**",
             "",
         ]
-        # Working block — preserve line breaks, use code-style for equations
-        working_lines = step.working.strip().splitlines()
-        for wl in working_lines:
-            lines.append(f"&emsp;{wl}")
+
+        # Working lines — each on its own line, indented
+        for wl in step.working.strip().splitlines():
+            wl = wl.strip()
+            if wl:
+                lines.append(f"&emsp;{wl}")
         lines.append("")
-        lines.append(f"&emsp;∴ &nbsp; `{step.result}`")
-        lines.append("")
+
+        # Result on its own line in a LaTeX block
+        lines += [
+            "&emsp;∴ &nbsp; Result:",
+            "",
+            f"$$${step.result}$$$",
+            "",
+        ]
 
         # Optional inline diagram
         if step.inline_diagram:
@@ -97,43 +114,47 @@ def _render_markdown(result, problem_text: str) -> str:
                 "",
             ]
 
-        # Optional why — indented note
+        # Optional why note
         if step.why:
             lines += [
                 f"> 📎 *{step.why}*",
                 "",
             ]
 
+        lines.append("")
+
     lines += ["---", ""]
 
-    # ── Final answer — boxed ──────────────────────────────────────────────
+    # ── Final answer ──────────────────────────────────────────────────────────
     lines += [
         "### ✅ Final Answer",
         "",
-        f"> ### {result.final_answer}",
+        "$$" + result.final_answer + "$$",
         "",
         "---",
         "",
     ]
 
-    # ── Key concepts ──────────────────────────────────────────────────────
+    # ── Key concepts ──────────────────────────────────────────────────────────
     if result.key_concepts:
         lines += ["### 🧠 Key Concepts", ""]
         for c in result.key_concepts:
             lines.append(f"- {c}")
         lines.append("")
 
-    # ── Common mistakes ───────────────────────────────────────────────────
+    # ── Common mistakes ───────────────────────────────────────────────────────
     if result.common_mistakes:
         lines += ["### ⚠️ Common Mistakes", ""]
         for m in result.common_mistakes:
             lines.append(f"- {m}")
         lines.append("")
 
-    # ── Difficulty badge ──────────────────────────────────────────────────
-    badge = {"easy": "🟢 Easy", "medium": "🟡 Medium", "hard": "🔴 Hard"}.get(
-        result.difficulty_rating.lower(), result.difficulty_rating
-    )
+    # ── Difficulty badge ──────────────────────────────────────────────────────
+    badge = {
+        "easy":   "🟢 Easy",
+        "medium": "🟡 Medium",
+        "hard":   "🔴 Hard",
+    }.get(result.difficulty_rating.lower(), result.difficulty_rating)
     lines.append(f"*Difficulty: {badge}*")
 
     return "\n".join(lines)

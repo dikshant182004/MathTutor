@@ -325,6 +325,9 @@ def web_search_tool(query: str) -> str:
 @tool
 def calculator_tool(expression: str) -> str:
     """
+    DO NOT use this for basic arithmetic, probability calculations, or
+    simple algebra. P(A | B') = P(A ∩ B') / P(B') does NOT need a calculator.
+    Only call this for: large factorials (n > 20), high-precision decimals, large matrices.
     Symbolic math calculator (SymPy backend) — use ONLY when heavy computation or high precision is REQUIRED.
 
     The LLM can handle ALL intermediate JEE-level calculations itself (basic arithmetic, trig identities,

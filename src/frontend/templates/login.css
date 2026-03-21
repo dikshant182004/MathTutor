@@ -1,0 +1,138 @@
+/* Hide the default Streamlit header and footer on login page */
+#MainMenu, footer, header { visibility: hidden; }
+
+/* Full-screen dark gradient background */
+.stApp {
+    background: linear-gradient(135deg, #0a0f1e 0%, #0d1b3e 50%, #0a0f1e 100%);
+}
+
+/* Centre everything vertically */
+.block-container {
+    max-width: 480px !important;
+    padding-top: 6vh !important;
+    margin: 0 auto;
+}
+
+/* ── Logo badge ── */
+.login-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+    font-size: 2.4rem;
+    margin: 0 auto 24px auto;
+    box-shadow: 0 8px 32px rgba(59,130,246,0.4);
+}
+
+/* ── Main card ── */
+.login-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 20px;
+    padding: 40px 36px 32px 36px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.login-title {
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: #ffffff;
+    text-align: center;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+    font-size: 0.95rem;
+    color: #94A3B8;
+    text-align: center;
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+/* ── Feature pills ── */
+.feature-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+}
+.feature-pill {
+    background: rgba(59,130,246,0.12);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    color: #93C5FD;
+    white-space: nowrap;
+}
+
+/* ── Google button override ── */
+div[data-testid="stButton"] > button {
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 14px 24px !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+    margin-top: 4px !important;
+}
+div[data-testid="stButton"] > button:hover {
+    background: #f1f5f9 !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35) !important;
+    transform: translateY(-1px) !important;
+}
+div[data-testid="stButton"] > button:active {
+    transform: translateY(0px) !important;
+}
+
+/* ── Divider ── */
+.login-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0;
+    color: #475569;
+    font-size: 0.82rem;
+}
+.login-divider::before,
+.login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+}
+
+/* ── Trust badges ── */
+.trust-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+}
+.trust-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #475569;
+    font-size: 0.78rem;
+}
+
+/* ── Footer ── */
+.login-footer {
+    text-align: center;
+    color: #334155;
+    font-size: 0.75rem;
+    margin-top: 24px;
+}

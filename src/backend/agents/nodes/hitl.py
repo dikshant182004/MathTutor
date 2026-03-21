@@ -1,6 +1,7 @@
 from backend.agents import *
 from backend.agents.nodes import *
 from langgraph.types import interrupt
+from langgraph.errors import GraphInterrupt
 
 
 class HITLAgent(BaseAgent):
@@ -73,7 +74,11 @@ class HITLAgent(BaseAgent):
                 f"[HITL] Suspending graph | type={hitl_type} | reason={reason[:80]}"
             )
 
-            human_response: dict = interrupt(interrupt_payload)
+            try:
+                human_response: dict = interrupt(interrupt_payload)
+            except GraphInterrupt:
+                raise  
+            
             logger.info(f"[HITL] Resumed | type={hitl_type} | response={human_response}")
 
             # ── Process human response into state updates ─────────────────────
@@ -91,6 +96,9 @@ class HITLAgent(BaseAgent):
 
             else:
                 return {"hitl_required": False, "hitl_type": None, "hitl_interrupt": None}
+        
+        except GraphInterrupt:
+            raise 
 
         except Exception as e:
             logger.error(f"[HITL] failed: {e}")

@@ -20,10 +20,9 @@ from backend.agents.utils.db_utils import (
     increment_problems_solved,
 )
 
+from backend.agents.nodes.tools import EMBED_INPUT_TYPE_DOC, EMBED_INPUT_TYPE_QUERY
 from backend.agents.nodes.memory import (
     REDIS_URL,
-    EMBED_INPUT_TYPE_DOC,
-    EMBED_INPUT_TYPE_QUERY,
     TOKEN_LIMIT,
     KEEP_LAST_N,
     EPISODIC_TTL,
