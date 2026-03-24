@@ -1,5 +1,6 @@
 from backend.agents import Annotated, List, Optional, TypedDict, BaseMessage
 from langgraph.graph.message import add_messages
+from operator import add
 
 
 class AgentState(TypedDict):
@@ -32,7 +33,7 @@ class AgentState(TypedDict):
     manim_video_path:   Optional[str]            # path returned by MCP server
 
     agent_payload_log: Optional[List[dict]]
-    conversation_log: Optional[List[str]]
+    conversation_log: Annotated[List[str], add]
     final_response: Optional[str]
 
     hitl_required        : bool
@@ -99,6 +100,7 @@ def make_initial_state(
         # Parsing & routing
         "parsed_data":         None,
         "solution_plan":       None,
+        "retrieved_context":   None, 
  
         # Solver
         "messages":            [],
@@ -119,5 +121,8 @@ def make_initial_state(
         "ltm_mode":            None,
         "ltm_context":         None,
         "ltm_stored":          None,
+
+        "agent_payload_log":   [],
+        "conversation_log":    [],
     })
  

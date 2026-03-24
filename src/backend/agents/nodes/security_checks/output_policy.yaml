@@ -1,8 +1,3 @@
-# ── output_policy.yaml ────────────────────────────────────────────────────────
-# Rules the safety agent applies to the solver's output before it reaches
-# the student. For a math tutor the risk surface is narrow but real.
-# ──────────────────────────────────────────────────────────────────────────────
-
 blocked_output_patterns:
   - harmful_synthesis_instructions   # e.g. a "math problem" about calculating drug doses
   - weapon_related_calculations      # trajectory, explosive yield framed as physics

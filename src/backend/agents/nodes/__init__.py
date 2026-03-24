@@ -17,7 +17,7 @@ _HARD_BLOCK_KEYWORDS = [
     "how to make", "manufacture", "explosive",
     "detonate", "nerve agent", "poison",
     "self-harm", "suicide method",
-    "child", "minor",          # context-dependent but always worth LLM review
+    "child",    # context-dependent but always worth LLM review
 ]
 
 __all__ = [

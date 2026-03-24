@@ -2,9 +2,34 @@ from backend.agents import Agent_Exception, logger, sys
 from backend.agents.nodes import AgentState
 from backend.agents.utils.helper import MediaProcessor
 
+from langchain_core.messages import RemoveMessage
 
 def detect_input_type(state: AgentState) -> AgentState:
     try:
+        # Clear all per-problem state
+        state["solve_iterations"] = 0
+        state["hitl_required"]    = False
+        state["hitl_type"]        = None
+        state["hitl_reason"]      = None
+        state["solver_output"]    = None
+        state["verifier_output"]  = None
+        state["explainer_output"] = None
+        # state["final_response"]   = None
+        state["solution_plan"]    = None
+        state["parsed_data"]      = None
+        state["safety_passed"]    = None
+        state["safety_reason"]    = None
+        # state["ltm_context"]      = None
+        state["manim_scene_code"] = None
+        state["manim_video_path"] = None
+
+        # Properly clear messages using RemoveMessage
+        existing_messages = state.get("messages") or []
+        if existing_messages:
+            removes = [RemoveMessage(id=m.id) for m in existing_messages if getattr(m, "id", None)]
+            if removes:
+                state["messages"] = removes
+
         if state.get("raw_text"):
             state["input_mode"] = "text"
         elif state.get("image_path"):
@@ -15,11 +40,10 @@ def detect_input_type(state: AgentState) -> AgentState:
             state["hitl_required"] = True
             state["hitl_reason"]   = "No valid input detected — please provide text, image, or audio."
 
-        state.setdefault("solve_iterations", 0)
         return state
     except Exception as e:
         raise Agent_Exception(e, sys)
-
+    
 
 def ocr_node(state: AgentState) -> AgentState:
 

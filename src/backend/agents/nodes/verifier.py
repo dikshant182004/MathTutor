@@ -21,7 +21,6 @@ class VerifierAgent(BaseAgent):
                         "verdict":       "No solution text was produced by the solver.",
                         "suggested_fix": "The solver must produce a complete written solution. Do not call tools without following up with written working.",
                         "confidence":    0.0,
-                        "hitl_reason":   None,
                     }
                 }
 
@@ -37,10 +36,19 @@ class VerifierAgent(BaseAgent):
                 - 'partially_correct' → method is right but an arithmetic/sign error exists.
                 - 'incorrect'         → the method itself is wrong.
                 - 'needs_human'       → you genuinely cannot determine correctness.
-                                        Use this sparingly — only when domain knowledge is missing.
+                                        Use this ONLY when domain knowledge is truly missing
+                                        or the problem requires specialist expertise beyond
+                                        standard JEE mathematics.
                 
                 When not correct: suggested_fix must name the exact step and the exact mistake.
                 Not 'check step 3' — write what is wrong and what to do instead.
+                
+                When needs_human: hitl_reason must clearly explain to the student in plain English:
+                - WHY the automated verifier cannot confirm this solution
+                - WHAT specific part is uncertain (e.g. "Step 3 uses a theorem outside standard
+                  JEE syllabus and cannot be verified automatically")
+                - WHAT the human reviewer should check
+                Write hitl_reason as if speaking directly to the student — not as an internal note.
                 
                 Problem:
                 {problem_text}
@@ -49,7 +57,7 @@ class VerifierAgent(BaseAgent):
                 {solution}
                 
                 Claimed final answer: {final_answer}"""
- 
+            
             result: VerifierOutput = self.llm.with_structured_output(VerifierOutput).invoke([
                 HumanMessage(content=_VERIFIER_PROMPT.format(
                     problem_text      = problem_text,
@@ -63,9 +71,9 @@ class VerifierAgent(BaseAgent):
  
             if result.status == "needs_human":
                 updates["hitl_required"] = True
-                updates["hitl_type"]     = "verification"  
+                updates["hitl_type"]     = "verification"
                 updates["hitl_reason"]   = (
-                    result.hitl_reason or "Verifier cannot determine correctness."
+                    result.hitl_reason or result.verdict or "Verifier cannot determine correctness."
                 )
  
             payload(

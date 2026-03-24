@@ -26,6 +26,11 @@ class ParserAgent(BaseAgent):
                 3. Set needs_clarification=true ONLY when the problem is unsolvable without more information — \
                 for example, a missing variable definition, a truncated sentence, or two contradictory conditions. \
                 Do NOT set it for problems that are unusual or hard. If you can make a reasonable interpretation, solve it.
+                4. When needs_clarification=true, write clarification_reason as a clear, specific, student-facing message
+                explaining EXACTLY what information is missing or ambiguous. 
+                Example: "The variable 'n' is used but never defined. Please specify what n represents."
+                Example: "The problem appears to be cut off after 'find the value of'. Please provide the complete question."
+                NOT: "Problem is ambiguous." — be specific.
                 
                 Input:
                 {_raw_text}"""

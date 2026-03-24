@@ -11,10 +11,24 @@ def render_login_page() -> None:
     Uses Streamlit's native st.login() which handles the entire
     Google OIDC flow — redirect, callback, cookie — automatically.
     No manual OAuth session management needed.
+
+    The [auth] section in .streamlit/secrets.toml must be present:
+
+        [auth]
+        redirect_uri  = "http://localhost:8501/oauth2callback"
+        cookie_secret = "<random-secret>"
+
+        [auth.google]
+        client_id     = "<GOOGLE_CLIENT_ID>"
+        client_secret = "<GOOGLE_CLIENT_SECRET>"
     """
 
-    _css = (Path(__file__).parent / "login.css").read_text(encoding="utf-8")
-    st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
+    # Load login-specific CSS safely
+    try:
+        _css = (Path(__file__).parent / "login.css").read_text(encoding="utf-8")
+        st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass
 
     # ── Logo ─────────────────────────────────────────────────────────────────
     st.markdown('<div class="login-logo">🧮</div>', unsafe_allow_html=True)

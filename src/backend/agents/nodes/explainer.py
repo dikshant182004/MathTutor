@@ -51,6 +51,8 @@ class ExplainerAgent(BaseAgent):
         - Limits      : lim_{{x → a}} with arrow.
         - Summations  : Σ_{{k=1}}^{{n}} with explicit bounds.
         - Vectors     : →a for vector, |→a| for magnitude.
+        - final_answer: ALWAYS a non-empty string — write "0" not 0, never boolean.
+          If the answer is zero write "0", if no such points exist write "0 points".
 
         STEP STRUCTURE:
         - Each step must show the complete algebraic working line-by-line.
@@ -201,6 +203,7 @@ class ExplainerAgent(BaseAgent):
             return {
                 "explainer_output": explainer_dict,
                 "final_response":   final_md,
+                "conversation_log":   [final_md],  
                 "manim_scene_code": manim_code,
                 "hitl_required":    True,
                 "hitl_type":        "satisfaction",

@@ -5,7 +5,7 @@ Contains:
   1. Singleton client/tokenizer getters
   2. Redis key-naming helpers (all keys defined in ONE place)
   3. User registry   (get_or_create_user, get_user_profile, increment_problems_solved)
-  4. Thread registry (create_thread, update_thread_meta, get_thread_history, load_thread_state)
+  4. Thread registry (create_thread, update_thread_meta, get_thread_history)
   5. STM summary persistence helpers (save/load the rolling message summary)
   6. Cohere embedding helper ( uses existing Cohere API key)
 """
@@ -257,17 +257,6 @@ def get_thread_history(student_id: str) -> list[dict]:
             threads.append(meta)
     logger.info(f"[Thread] Loaded {len(threads)} threads | student={student_id}")
     return threads
-
-
-def load_thread_state(thread_id: str, checkpointer: RedisSaver) -> Optional[dict]:
-    """
-    Loads the full AgentState snapshot for a past thread.
-    Not called in the current flow — available for "resume past session" feature.
-    Returns None if the checkpoint has expired (>2h old) or doesn't exist.
-    """
-    config   = {"configurable": {"thread_id": thread_id}}
-    snapshot = checkpointer.get(config)
-    return snapshot.values if snapshot else None
 
 
 # ══════════════════════════════════════════════════════════════════════════════

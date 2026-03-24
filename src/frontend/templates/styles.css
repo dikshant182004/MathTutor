@@ -1,4 +1,13 @@
 /* ══════════════════════════════════════════════════════
+   HIDE AUTO-GENERATED SIDEBAR PAGE NAVIGATION
+   Streamlit adds a nav list for every file in pages/.
+   We use st.switch_page buttons instead.
+   ══════════════════════════════════════════════════════ */
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════
    AGENT ACTIVITY CARDS
    ══════════════════════════════════════════════════════ */
 

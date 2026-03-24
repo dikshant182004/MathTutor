@@ -1,15 +1,17 @@
 from __future__ import annotations
 import os
+import hashlib
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from langgraph.errors import GraphInterrupt
 
+from backend.agents import logger
 from backend.agents.graph import chatbot, checkpointer
 from backend.agents.state import make_initial_state
 from backend.agents.nodes.memory.memory_manager import prune_stale_episodic
 from backend.agents.utils.db_utils import (
     get_user_profile, get_or_create_user, create_thread,
-    get_thread_history, load_thread_state,          
+    get_thread_history        
 )
 from backend.agents.nodes.tools.tools import clear_store, get_store_info, ingest_pdf
 
@@ -25,15 +27,31 @@ from frontend.templates.profile import build_profile_card
 st.set_page_config(page_title="Math Tutor", page_icon="🧮",
                    layout="wide", initial_sidebar_state="expanded")
 
-_css = (Path(__file__).parent / "templates" / "styles.css").read_text(encoding="utf-8")
-st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
+# ── Load global styles safely — must not crash before login check ─────────────
+try:
+    _css = (Path(__file__).parent / "templates" / "styles.css").read_text(encoding="utf-8")
+    st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
+except FileNotFoundError:
+    pass  # styles are cosmetic; app must still render login page
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("manim_outputs", exist_ok=True)
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  AUTH GATE — must come before any st.user attribute access
+# ══════════════════════════════════════════════════════════════════════════════
 if not st.user.is_logged_in:
     render_login_page()
     st.stop()
+
+# ── Populate google_user in session state once after login ────────────────────
+# This is the single source of truth for display name / email used by the
+# profile card and sidebar expander.  st.user is only valid past this point.
+if "google_user" not in st.session_state:
+    st.session_state["google_user"] = {
+        "name":  st.user.name  or "",
+        "email": st.user.email or "",
+    }
 
 # ── Resolve student identity from Google account ─────────────────────────────
 _email = st.user.email or ""
@@ -45,14 +63,12 @@ if "student_id" not in st.session_state:
         display_name = _name,
     )
 
+
 def _logout() -> None:
+    """Clear all session state then hand off to Streamlit's auth logout."""
     for k in list(st.session_state.keys()):
         del st.session_state[k]
-    try:
-        st.query_params.clear()
-    except Exception:
-        pass
-    st.rerun()
+    st.logout()   # clears the auth cookie and redirects to login
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -66,7 +82,6 @@ def _cfg(tid: str) -> dict:
 def _init_session() -> None:
     sid = st.session_state["student_id"]
 
-    # Bug 4 fix — "user_profile" included in defaults so it is always initialised
     defaults: dict = {
         "thread_id":       None,
         "threads_meta":    [],
@@ -78,7 +93,10 @@ def _init_session() -> None:
         "hitl_payload":    None,
         "activity_log":    [],
         "current_node":    None,
-        "user_profile":    None,   # Bug 4 fix
+        "user_profile":    None,
+        "_show_reexplain_form": False,
+        "hitl_resuming":        False,
+        "history_loaded":       False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -102,7 +120,9 @@ def _init_session() -> None:
             metas[0]["thread_id"] if metas else create_thread(sid)
         )
 
-    st.session_state["message_history"] = _load_history(st.session_state["thread_id"])
+    if not st.session_state.get("history_loaded"):
+        st.session_state["message_history"] = _load_history(st.session_state["thread_id"])
+        st.session_state["history_loaded"] = True
 
 
 def _reset_chat() -> None:
@@ -115,7 +135,10 @@ def _reset_chat() -> None:
         thread_id=tid, message_history=[], pdf_ingested=False,
         hitl_pending=False, hitl_question=None, hitl_type="",
         hitl_payload=None, activity_log=[], current_node=None,
+        _show_reexplain_form=False, hitl_resuming=False,
+        history_loaded=True,
     )
+    st.session_state.pop("clarification_prefill", None)
     try:
         st.session_state["threads_meta"] = get_thread_history(sid)
     except Exception:
@@ -138,67 +161,85 @@ def _fallback_threads() -> list[str]:
 #  CONVERSATION HISTORY
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _load_history(tid: str) -> list[dict]:
-    try:
-        snap = chatbot.get_state(config=_cfg(tid))
-        vals = snap.values or {}
-        msgs, conv, final = (
-            vals.get("messages", []),
-            vals.get("conversation_log") or [],
-            vals.get("final_response", ""),
-        )
-    except Exception:
-        return []
+def _build_history_from_vals(vals: dict) -> list[dict]:
+    msgs  = vals.get("messages", [])
+    conv  = vals.get("conversation_log") or []
+    final = vals.get("final_response", "")
 
-    history, seen = [], set()
+    seen = set()
     _skip = ("Solve this problem:", "[Human feedback]", "[Human clarification]",
              "[Feedback]:", "[Clarification]:")
 
+    user_msgs = []
     for m in msgs:
+        if not isinstance(m, HumanMessage):
+            continue
         raw = m.content
         if isinstance(raw, list):
             raw = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw)
         c = str(raw or "").strip()
-        if not c:
+        if not c or any(c.startswith(p) for p in _skip):
             continue
-
-        if isinstance(m, HumanMessage):
-            if any(c.startswith(p) for p in _skip):
-                continue
-            # use full content hash instead of prefix slice
-            k = f"u:{hash(c)}"
-            if k not in seen:
-                seen.add(k)
-                history.append({"role": "user", "content": c})
-
-        elif isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
-            if c.startswith("## 📘"):
-                continue
-            if c.startswith((HITL_PREFIX, HITL_SAT_PREFIX)):
-                continue
-            if len(c) < 30:
-                continue
-            k = f"a:{hash(c)}"
-            if k not in seen:
-                seen.add(k)
-                history.append({"role": "assistant", "content": c})
-
-    if final and final.strip():
-        k = f"a:{hash(final)}"
+        k = f"u:{hashlib.md5(c.encode()).hexdigest()[:12]}"
         if k not in seen:
             seen.add(k)
-            history.append({"role": "assistant", "content": final.strip()})
+            user_msgs.append(c)
 
+    solutions = []
     for entry in conv:
         e = str(entry).strip()
-        if not e:
+        if not e or e.startswith((HITL_PREFIX, HITL_SAT_PREFIX)) or not e.startswith("## 📘"):
             continue
-        k = f"a:{hash(e)}"
+        k = f"a:{hashlib.md5(e.encode()).hexdigest()[:12]}"
         if k not in seen:
             seen.add(k)
-            history.append({"role": "assistant", "content": e})
+            solutions.append(e)
 
+    if final and final.strip() and final.startswith("## 📘"):
+        k = f"a:{hashlib.md5(final.encode()).hexdigest()[:12]}"
+        if k not in seen:
+            seen.add(k)
+            solutions.append(final.strip())
+
+    history = []
+    for i, user_q in enumerate(user_msgs):
+        history.append({"role": "user", "content": user_q})
+        if i < len(solutions):
+            history.append({"role": "assistant", "content": solutions[i]})
+    for sol in solutions[len(user_msgs):]:
+        history.append({"role": "assistant", "content": sol})
     return history
+
+
+def _extract_hitl_from_snap(snap) -> tuple[bool, Optional[dict]]:
+    next_nodes = list(snap.next or [])
+    if "hitl_node" not in next_nodes:
+        return False, None
+    for task in (snap.tasks or []):
+        for iv in getattr(task, "interrupts", []):
+            val = getattr(iv, "value", {}) or {}
+            if isinstance(val, dict):
+                return True, val
+            
+    vals           = snap.values or {}
+    stored_payload = vals.get("hitl_interrupt")
+    if isinstance(stored_payload, dict) and stored_payload.get("hitl_type"):
+        return True, stored_payload
+    hitl_type   = vals.get("hitl_type") or "clarification"
+    hitl_reason = vals.get("hitl_reason") or ""
+    return True, {
+        "hitl_type": hitl_type,
+        "prompt":    hitl_reason or "Please provide the required input.",
+        "message":   hitl_reason or "Please provide the required input.",
+    }
+
+
+def _load_history(tid: str) -> list[dict]:
+    try:
+        snap = chatbot.get_state(config=_cfg(tid))
+        return _build_history_from_vals(snap.values or {})
+    except Exception:
+        return []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -208,70 +249,10 @@ def _load_history(tid: str) -> list[dict]:
 def _check_hitl(tid: str) -> tuple[bool, Optional[dict]]:
     try:
         snap = chatbot.get_state(config=_cfg(tid))
-        if "hitl_node" not in list(snap.next or []):
-            return False, None
-        for task in (snap.tasks or []):
-            for iv in getattr(task, "interrupts", []):
-                val = getattr(iv, "value", {}) or {}
-                if isinstance(val, dict):
-                    return True, val
-        return True, {"hitl_type": "clarification", "prompt": "Please clarify."}
-    except Exception:
+        return _extract_hitl_from_snap(snap)
+    except Exception as e:
+        logger.warning(f"[app] _check_hitl failed: {e}")
         return False, None
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  THREAD RESUME HELPER
-#  Builds a human-readable activity summary from the last checkpoint snapshot.
-#  Shown in the activity panel when a past thread is loaded.
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _build_activity_from_snapshot(snapshot: dict) -> list[dict]:
-    """
-    Reconstructs a minimal activity log from a restored AgentState snapshot
-    so the activity panel shows meaningful context when resuming a past thread.
-    """
-    import time as _time
-
-    log = []
-
-    def _entry(node: str, detail: str, status: str = "done") -> dict:
-        from frontend import AGENT_META
-        meta = AGENT_META.get(node, {"icon": "⚙️", "label": node})
-        return {
-            "node":    node,
-            "icon":    meta["icon"],
-            "label":   meta["label"],
-            "status":  status,
-            "detail":  detail[:120],
-            "payload": {},
-            "ts":      _time.strftime("%H:%M:%S"),
-        }
-
-    if snapshot.get("guardrail_passed") is True:
-        log.append(_entry("guardrail_agent", "Passed ✓"))
-    if snapshot.get("parsed_data"):
-        pd = snapshot["parsed_data"]
-        log.append(_entry("parser_agent", f"Topic: {pd.get('topic', '?')}"))
-    if snapshot.get("solution_plan"):
-        sp = snapshot["solution_plan"]
-        log.append(_entry("intent_router", f"{sp.get('topic','?')} | {sp.get('difficulty','?')}"))
-    if snapshot.get("solver_output"):
-        so = snapshot["solver_output"]
-        log.append(_entry("solver_agent", f"Attempt {snapshot.get('solve_iterations', 1)}"))
-    if snapshot.get("verifier_output"):
-        vo = snapshot["verifier_output"]
-        log.append(_entry("verifier_agent", f"Status: {vo.get('status', '?')}"))
-    if snapshot.get("safety_passed") is True:
-        log.append(_entry("safety_agent", "Passed ✓"))
-    if snapshot.get("explainer_output"):
-        log.append(_entry("explainer_agent", "Explanation delivered"))
-    if snapshot.get("manim_video_path"):
-        log.append(_entry("manim_node", "Video rendered"))
-    if snapshot.get("ltm_stored"):
-        log.append(_entry("store_ltm", "Memory saved ✓"))
-
-    return log
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -417,29 +398,34 @@ with st.sidebar:
         sub     = " · ".join(filter(None, [topic, outcome]))
 
         if st.button(label, key=f"t_{tid}", use_container_width=True, help=sub or None):
-            # restore AgentState snapshot for richer activity panel context
-            snapshot = load_thread_state(tid, checkpointer) or {}
+            try:
+                snap = chatbot.get_state(config=_cfg(tid))
+                snap_vals  = snap.values or {}
+                next_nodes = list(snap.next or [])
+                history    = _build_history_from_vals(snap_vals)
+                interrupted, payload = _extract_hitl_from_snap(snap)
+            except Exception:
+                snap_vals  = {}
+                next_nodes = []
+                history    = []
+                interrupted, payload = False, None
 
-            # Rebuild activity log from snapshot so past work is visible in the panel
-            restored_log = _build_activity_from_snapshot(snapshot)
+            is_genuinely_pending = interrupted and "hitl_node" in next_nodes
 
             st.session_state.update(
                 thread_id       = tid,
-                message_history = _load_history(tid),
+                message_history = history,
+                history_loaded  = True,
                 pdf_ingested    = get_store_info(tid) is not None,
-                # 4b — show restored activity instead of blank panel
-                activity_log    = restored_log,
+                activity_log    = [],
                 current_node    = None,
-            )
-
-            # Restore HITL state if thread is mid-interrupt
-            interrupted, payload = _check_hitl(tid)
-            st.session_state.update(
-                hitl_pending  = interrupted,
-                hitl_payload  = payload,
-                hitl_question = ((payload or {}).get("prompt") or
-                                 (payload or {}).get("message")) if payload else None,
-                hitl_type     = (payload or {}).get("hitl_type", "") if payload else "",
+                hitl_pending    = is_genuinely_pending,
+                hitl_payload    = payload if is_genuinely_pending else None,
+                hitl_question   = ((payload or {}).get("prompt") or
+                                   (payload or {}).get("message")) if is_genuinely_pending else None,
+                hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
+                hitl_resuming   = False,
+                _show_reexplain_form = False,
             )
             st.rerun()
 
@@ -467,19 +453,9 @@ with col_chat:
     with h1:
         st.title("🧮 Math Tutor Agent")
     with h2:
-        gu = st.session_state.get("google_user") or {}
-        up = st.session_state.get("user_profile") or {}
-        if gu:
-            with st.popover("👤 " + gu.get("name", "Profile"), use_container_width=True):
-                st.markdown(build_profile_card(
-                    name            = gu.get("name", ""),
-                    email           = gu.get("email", ""),
-                    problems_solved = int(up.get("total_problems_solved", 0)),
-                    last_login      = float(up.get("last_login", 0)) or None,
-                    member_since    = float(up.get("created_at", 0)) or None,
-                ), unsafe_allow_html=True)
-                if st.button("🚪 Logout", key="logout_top", use_container_width=True):
-                    _logout()
+        # Navigation button — top-right corner
+        if st.button("🧠 Memory", use_container_width=True, help="View your memory graph"):
+            st.switch_page("pages/memory_viz.py")
 
     # ── Message history replay ────────────────────────────────────────────────
     for msg in st.session_state["message_history"]:
@@ -515,19 +491,6 @@ with col_chat:
             add_step("hitl_node", status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
 
-        pfx      = HITL_SAT_PREFIX if is_sat else HITL_PREFIX
-        stored_q = pfx + question
-        hist     = st.session_state["message_history"]
-        if not hist or hist[-1].get("content") != stored_q:
-            hist.append({"role": "assistant", "content": stored_q})
-            try:
-                snap = chatbot.get_state(config=_cfg(tid))
-                exl  = (snap.values or {}).get("conversation_log") or []
-                if not exl or exl[-1] != stored_q:
-                    chatbot.update_state(_cfg(tid), {"conversation_log": exl + [stored_q]})
-            except Exception:
-                pass
-
         st.markdown(build_hitl_banner(hitl_type, question), unsafe_allow_html=True)
 
         human_answer: Optional[dict] = None
@@ -537,11 +500,11 @@ with col_chat:
             with c1:
                 if st.button("✅ Yes, next question", use_container_width=True, type="primary"):
                     human_answer = {"satisfied": True, "follow_up": ""}
+                    st.session_state["_show_reexplain_form"] = False
             with c2:
                 if st.button("🔄 No, re-explain", use_container_width=True):
                     st.session_state["_show_reexplain_form"] = True
 
-            #  using session_state flag 
             if st.session_state.get("_show_reexplain_form"):
                 with st.form("reexplain", clear_on_submit=True):
                     txt = st.text_area("What was unclear?", height=80)
@@ -582,13 +545,27 @@ with col_chat:
                     human_answer = {"is_correct": bool(ok), "fix_hint": hint.strip()}
 
         else:  # clarification
+            prefill = payload.get("problem_text", "")
+            if "clarification_prefill" not in st.session_state:
+                st.session_state["clarification_prefill"] = prefill
             with st.form("hitl_clarify", clear_on_submit=True):
-                cl = st.text_area("Clarification", placeholder="Type here…",
-                                  height=100, label_visibility="collapsed")
+                cl = st.text_area(
+                    "Clarification",
+                    value=st.session_state.get("clarification_prefill", ""),
+                    height=100,
+                    label_visibility="collapsed"
+                )
                 if st.form_submit_button("Submit ✅", use_container_width=True):
                     human_answer = {"corrected_text": cl.strip()}
+                    st.session_state.pop("clarification_prefill", None)
 
+        # ── Resume flow ───────────────────────────────────────────────────────
         if human_answer is not None:
+            if st.session_state.get("hitl_resuming"):
+                st.stop()
+
+            st.session_state["hitl_resuming"] = True
+
             lbl = ("✅ Satisfied" if is_sat else "🖼️ Input" if is_bad
                    else "🧾 Verification" if is_ver else "💬 Clarification")
             st.session_state["message_history"].append(
@@ -598,6 +575,7 @@ with col_chat:
                 hitl_pending=False, hitl_question=None,
                 hitl_type="", hitl_payload=None,
             )
+            st.session_state.pop("clarification_prefill", None)
             for s in reversed(st.session_state["activity_log"]):
                 if s["node"] == "hitl_node":
                     s["status"] = "done"
@@ -611,6 +589,10 @@ with col_chat:
 
                 def _resume():
                     try:
+                        snap = chatbot.get_state(config=_cfg(tid))
+                        if "hitl_node" not in list(snap.next or []):
+                            logger.warning("[app] Resume called but graph not at hitl_node — skipping")
+                            return
                         for ev in chatbot.stream(
                             Command(resume=human_answer),
                             config=_cfg(tid), stream_mode="updates",
@@ -622,6 +604,10 @@ with col_chat:
                                 yield t
                     except GraphInterrupt:
                         pass
+                    except Exception as e:
+                        error_msg = f"⚠️ Something went wrong: {str(e)[:200]}"
+                        parts.append(error_msg)
+                        yield error_msg
 
                 st.write_stream(_resume())
 
@@ -633,45 +619,38 @@ with col_chat:
             mark_all_done()
             render_activity_panel(activity_ph)
 
-            # Clean HITL banner from conversation_log
             try:
-                sc = chatbot.get_state(config=_cfg(tid))
-                el = (sc.values or {}).get("conversation_log") or []
-                # Cap conversation_log at 20 entries (Warning fix)
-                if el and str(el[-1]).startswith((HITL_PREFIX, HITL_SAT_PREFIX)):
-                    el = el[:-1]
-                chatbot.update_state(_cfg(tid), {"conversation_log": el[-20:]})
-            except Exception:
-                pass
+                post_snap  = chatbot.get_state(config=_cfg(tid))
+                post_vals  = post_snap.values or {}
+                post_next  = list(post_snap.next or [])
+                st.session_state["message_history"] = _build_history_from_vals(post_vals)
+                st.session_state["history_loaded"]  = True
 
-            st.session_state["message_history"] = _load_history(tid)
-
-            # Manim video
-            try:
-                snap2 = chatbot.get_state(config=_cfg(tid))
-                vp = (snap2.values or {}).get("manim_video_path")
+                vp = post_vals.get("manim_video_path")
                 if vp and os.path.exists(str(vp)):
                     st.divider()
                     st.subheader("🎬 Visual Explanation")
                     st.video(str(vp))
-            except Exception:
-                pass
 
-            # Refresh profile
+                interrupted, p2 = _extract_hitl_from_snap(post_snap)
+                is_pending = interrupted and "hitl_node" in post_next
+                if is_pending and p2:
+                    st.session_state.update(
+                        hitl_pending=True, hitl_payload=p2,
+                        hitl_question=p2.get("prompt") or p2.get("message"),
+                        hitl_type=p2.get("hitl_type", ""),
+                    )
+            except Exception:
+                st.session_state["message_history"] = _load_history(tid)
+                st.session_state["history_loaded"]  = True
+
             try:
                 st.session_state["user_profile"] = get_user_profile(
                     st.session_state["student_id"])
             except Exception:
                 pass
 
-            # Check chained HITL
-            interrupted, p2 = _check_hitl(tid)
-            if interrupted and p2:
-                st.session_state.update(
-                    hitl_pending=True, hitl_payload=p2,
-                    hitl_question=p2.get("prompt") or p2.get("message"),
-                    hitl_type=p2.get("hitl_type", ""),
-                )
+            st.session_state["hitl_resuming"] = False
             st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -692,8 +671,6 @@ with col_chat:
             tid = st.session_state["thread_id"]
             sid = st.session_state["student_id"]
 
-            # guard: sid must never be "anonymous" at this point
-            # _require_login() enforces login before we reach here, but be explicit
             if not sid or sid == "anonymous":
                 st.error("Please log in before solving problems.")
                 st.stop()
@@ -743,33 +720,45 @@ with col_chat:
                                 rparts.append(t)
                                 yield t
                     except GraphInterrupt:
-                        pass 
-                    
+                        pass
+
                 st.write_stream(_stream())
 
             mark_all_done()
             render_activity_panel(activity_ph)
-            st.session_state["message_history"] = _load_history(tid)
 
-            # Manim video
             try:
-                fs = chatbot.get_state(config=_cfg(tid))
-                vp = (fs.values or {}).get("manim_video_path")
+                fs       = chatbot.get_state(config=_cfg(tid))
+                fs_vals  = fs.values or {}
+                fs_next  = list(fs.next or [])
+                st.session_state["message_history"] = _build_history_from_vals(fs_vals)
+                st.session_state["history_loaded"]  = True
+
+                vp = fs_vals.get("manim_video_path")
                 if vp and os.path.exists(str(vp)):
                     st.divider()
                     st.subheader("🎬 Visual Explanation")
                     st.video(str(vp))
                     add_step("manim_node", "done", f"Video: {os.path.basename(str(vp))}")
                     render_activity_panel(activity_ph)
-            except Exception:
-                pass
 
-            # HITL after normal stream
-            interrupted, p = _check_hitl(tid)
-            if interrupted and p:
-                st.session_state.update(
-                    hitl_pending=True, hitl_payload=p,
-                    hitl_question=p.get("prompt") or p.get("message"),
-                    hitl_type=p.get("hitl_type", ""),
-                )
-                st.rerun()
+                interrupted, p = _extract_hitl_from_snap(fs)
+                is_pending = interrupted and "hitl_node" in fs_next
+                if is_pending and p:
+                    st.session_state.update(
+                        hitl_pending=True, hitl_payload=p,
+                        hitl_question=p.get("prompt") or p.get("message"),
+                        hitl_type=p.get("hitl_type", ""),
+                    )
+                    st.rerun()
+            except Exception:
+                st.session_state["message_history"] = _load_history(tid)
+                st.session_state["history_loaded"]  = True
+                interrupted, p = _check_hitl(tid)
+                if interrupted and p:
+                    st.session_state.update(
+                        hitl_pending=True, hitl_payload=p,
+                        hitl_question=p.get("prompt") or p.get("message"),
+                        hitl_type=p.get("hitl_type", ""),
+                    )
+                    st.rerun()

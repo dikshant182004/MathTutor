@@ -1,0 +1,297 @@
+/*
+  graph.css — Neo4j-style dark graph visualization
+  frontend/graph_viz/graph.css
+*/
+
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+body {
+  background: #0a0d14;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+#wrapper {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Graph canvas ─────────────────────────────────────────────────────────── */
+#graph-canvas {
+  flex: 1;
+  position: relative;
+  background: radial-gradient(ellipse at 30% 40%, #0d1526 0%, #0a0d14 60%);
+}
+
+/* Subtle grid dots like Neo4j */
+#graph-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, #1a2235 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 0;
+}
+
+#mynetwork {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Toolbar overlay ──────────────────────────────────────────────────────── */
+#toolbar {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  gap: 5px;
+  z-index: 10;
+}
+
+.tb-btn {
+  background: rgba(13, 21, 38, 0.90);
+  border: 1px solid #1e2d45;
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #7eb8f7;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.tb-btn:hover  { background: #122040; border-color: #2d5a8e; color: #b3d4ff; }
+.tb-btn.active { background: #0d2d52; border-color: #3b82f6; color: #93c5fd; }
+
+/* ── Stats bar ────────────────────────────────────────────────────────────── */
+#stats-bar {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(13, 21, 38, 0.88);
+  border: 1px solid #1e2d45;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 10px;
+  color: #4a6080;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+  letter-spacing: 0.04em;
+}
+
+#stats-bar span { color: #5a7aa0; }
+#stats-bar #stat-selected { color: #7eb8f7; }
+.stat-sep { color: #1e2d45 !important; }
+
+/* ── Legend overlay ───────────────────────────────────────────────────────── */
+#legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(10, 13, 20, 0.92);
+  border: 1px solid #1e2d45;
+  border-radius: 10px;
+  padding: 12px 14px;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  z-index: 10;
+  min-width: 140px;
+}
+
+.legend-title {
+  font-size: 8px;
+  color: #2d4060;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #1a2235;
+}
+
+#legend .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #7090b0;
+}
+
+#legend .row:last-child { margin-bottom: 0; }
+
+#legend .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 5px currentColor;
+}
+
+/* ── Right detail panel ───────────────────────────────────────────────────── */
+#panel {
+  width: 0;
+  min-width: 0;
+  max-width: 310px;
+  background: #0c1020;
+  border-left: 1px solid #1a2540;
+  overflow: hidden;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+#panel.open { width: 295px; }
+
+#panel-header {
+  padding: 13px 15px 10px;
+  border-bottom: 1px solid #1a2540;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: #0d1424;
+}
+
+#panel-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #c8d8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+  letter-spacing: 0.01em;
+}
+
+#panel-close {
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: #2d4060;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+  font-family: inherit;
+}
+
+#panel-close:hover {
+  color: #e2e8f0;
+  background: #1a2540;
+}
+
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+/* ── Type badge ───────────────────────────────────────────────────────────── */
+.type-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 10px;
+  margin-bottom: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+
+/* ── Detail rows ──────────────────────────────────────────────────────────── */
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-bottom: 1px solid #111d30;
+}
+
+.detail-key {
+  font-size: 9px;
+  color: #2d4060;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
+}
+
+.detail-val {
+  font-size: 11px;
+  color: #8bacd4;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* Decay score coloring */
+.decay-high  { color: #4ade80 !important; }
+.decay-mid   { color: #fbbf24 !important; }
+.decay-low   { color: #f87171 !important; }
+
+/* ── Connected nodes ──────────────────────────────────────────────────────── */
+.conn-section { margin-top: 14px; }
+
+.conn-label {
+  font-size: 9px;
+  color: #2d4060;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+}
+
+.conn-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  margin-bottom: 3px;
+  background: #111d30;
+  font-size: 10px;
+  color: #7eb8f7;
+  cursor: pointer;
+  transition: background 0.1s;
+  border: 1px solid transparent;
+}
+
+.conn-item:hover {
+  background: #162540;
+  border-color: #1e3a5a;
+}
+
+.conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.conn-dir {
+  color: #2d4060;
+  flex-shrink: 0;
+  font-size: 9px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2d4060; }

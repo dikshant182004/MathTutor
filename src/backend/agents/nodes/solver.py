@@ -136,6 +136,9 @@ class SolverAgent(BaseAgent):
             ltm_context   = state.get("ltm_context") or {}
             existing_msgs = state.get("messages") or []
 
+            if state.get("solve_iterations", 0) == 0:
+                existing_msgs = []
+
             existing_msgs = trim_messages_if_needed(
                 messages  = list(existing_msgs),
                 thread_id = thread_id,
@@ -229,5 +232,14 @@ class SolverAgent(BaseAgent):
             }
 
         except Exception as e:
+            if "rate_limit" in str(e).lower() or "429" in str(e) or "tokens" in str(e).lower():
+                logger.warning(f"[Solver] Token/rate limit hit: {e}")
+                return {
+                    "solve_iterations": iteration + 1,
+                    "hitl_required":    True,
+                    "hitl_type":        "verification",
+                    "hitl_reason":      "Token limit reached. Please try again in a moment.",
+                    "solver_output":    {"solution": "", "final_answer": "", "rag_context_used": False, "calculator_used": False},
+                }
             logger.error(f"[Solver] failed: {e}")
             raise Agent_Exception(e, sys)

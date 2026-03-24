@@ -4,11 +4,20 @@ from pathlib import Path
 from backend.agents import *
 from backend.agents.nodes import *
 
-_GUARDRAILS_DIR = Path(__file__).parent / "security_checks"
+_SAFETY_POLICY_DIR = Path(__file__).resolve().parent / "security_checks"
 
 @lru_cache(maxsize=1)
 def _load_output_policy() -> dict:
-    return yaml.safe_load((_GUARDRAILS_DIR / "output_policy.yaml").read_text())
+    path = _SAFETY_POLICY_DIR / "output_policy.yaml"
+    data = yaml.safe_load(path.read_text())
+    # Validate we got the right file
+    if not isinstance(data, dict) or "blocked_output_patterns" not in data:
+        raise ValueError(
+            f"[Safety] Wrong file loaded. Keys found: "
+            f"{list(data.keys()) if isinstance(data, dict) else type(data)}. "
+            f"Path: {path.resolve()}"
+        )
+    return data
 
 class SafetyAgent(BaseAgent):
     """
@@ -40,7 +49,7 @@ class SafetyAgent(BaseAgent):
                 return True, f"keyword match: '{kw}'"
         return False, ""
 
-    def _build_prompt(self, solution_text: str, policy: dict) -> str:
+    def _build_safety_prompt(self, solution_text: str, policy: dict) -> str:
         blocked  = "\n".join(f"- {p}" for p in policy.get("blocked_output_patterns", []))
         allowed  = "\n".join(f"- {p}" for p in policy.get("always_allowed", []))
 
@@ -92,7 +101,7 @@ class SafetyAgent(BaseAgent):
 
             # ── Stage 2: LLM policy check ─────────────────────────────────────
             policy = _load_output_policy()
-            prompt = self._build_prompt(solution_text, policy)
+            prompt = self._build_safety_prompt(solution_text, policy)
 
             result: SafetyOutput = self.llm.with_structured_output(SafetyOutput).invoke(
                 [HumanMessage(content=prompt)]

@@ -1,4 +1,4 @@
-from backend.agents import List, Optional
+from backend.agents import List, Optional, Union
 from pydantic import BaseModel, Field, model_validator
 from backend.agents.utils.helper import _coerce_bools
 
@@ -8,13 +8,13 @@ class ParserOutput(BaseModel):
     topic:                Optional[str] = Field(None, description="Detected math topic (algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory)")
     variables:            List[str]     = Field(default_factory=list, description="All variables present in the problem, e.g. ['x', 'y', 'n']")
     constraints:          List[str]     = Field(default_factory=list, description="Explicit constraints or given conditions, e.g. ['x > 0', 'n is a positive integer']")
-    needs_clarification:  bool          = Field(False, description="True only when the problem is genuinely ambiguous or critically incomplete")
+    needs_clarification:  Union[bool, str]  = Field(False, description="True only when the problem is genuinely ambiguous or critically incomplete")
     clarification_reason: Optional[str] = Field(None, description="Why clarification is needed — must be set when needs_clarification=True")
 
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        return _coerce_bools(data, bool_fields={"needs_clarification"})
 
 
 class IntentRouterOutput(BaseModel):
@@ -49,7 +49,7 @@ class IntentRouterOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        return _coerce_bools(data, bool_fields=set())
 
 
 class VerifierOutput(BaseModel):
@@ -86,16 +86,32 @@ class VerifierOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        return _coerce_bools(data, bool_fields=set())
 
 
 class SolutionStep(BaseModel):
-    step_number:    int            = Field(..., description="Sequential step number starting from 1.")
+    step_number:    Union[int, str]            = Field(..., description="Sequential step number starting from 1.")
     heading:        str            = Field(..., description="Name the technique applied — one phrase.")
     working:        str            = Field(..., description="Complete line-by-line algebraic working.")
     result:         str            = Field(..., description="The expression or value this step reduces to.")
     why:            Optional[str]  = Field(None, description="One sentence explaining WHY this step is taken — only when non-obvious.")
     inline_diagram: Optional[str]  = Field(None, description="Optional ASCII/Unicode diagram for this step.")
+
+    
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: dict) -> dict:
+        # Coerce step_number string to int
+        if "step_number" in data and not isinstance(data["step_number"], int):
+            try:
+                data["step_number"] = int(data["step_number"])
+            except (ValueError, TypeError):
+                data["step_number"] = 0
+        # Coerce "None" strings to actual None
+        for field in ("why", "inline_diagram"):
+            if data.get(field) in ("None", "none", "null", ""):
+                data[field] = None
+        return data
 
 
 class ExplainerOutput(BaseModel):
@@ -105,7 +121,7 @@ class ExplainerOutput(BaseModel):
     key_formulae:      List[str]  = Field(default_factory=list)
     key_concepts:      List[str]  = Field(default_factory=list)
     common_mistakes:   List[str]  = Field(default_factory=list)
-    needs_diagram:     bool       = Field(False)
+    needs_diagram:     Union[bool, str]       = Field(False)
     manim_hint:        Optional[str] = Field(None)
     difficulty_rating: str        = Field(..., description="easy | medium | hard")
 
@@ -122,11 +138,20 @@ class ExplainerOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        data = _coerce_bools(data, bool_fields={"needs_diagram"})
+        # Coerce string fields — Groq sometimes returns 0/False for zero answers
+        for str_field in ("final_answer", "approach_summary", "difficulty_rating"):
+            if str_field in data and data[str_field] is not None:
+                val = data[str_field]
+                if isinstance(val, bool):
+                    data[str_field] = "0" if not val else "1"
+                elif not isinstance(val, str):
+                    data[str_field] = str(val)
+        return data
 
 
 class GuardrailOutput(BaseModel):
-    passed:       bool           = Field(..., description="True if input is safe and on-topic.")
+    passed:       Union[bool, str]   = Field(..., description="True if input is safe and on-topic.")
     topic:        Optional[str]  = Field(None)
     block_reason: Optional[str]  = Field(None, description="off_topic | prompt_injection | pii | harmful_content")
     message:      Optional[str]  = Field(None, description="Student-facing explanation when passed=False.")
@@ -134,15 +159,15 @@ class GuardrailOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        return _coerce_bools(data, bool_fields={"passed"})
 
 
 class SafetyOutput(BaseModel):
-    passed:         bool          = Field(..., description="True if the output is safe to show the student.")
+    passed:         Union[bool, str]  = Field(..., description="True if the output is safe to show the student.")
     violation_type: Optional[str] = Field(None, description="harmful_content | policy_violation | hallucinated_pii")
     reason:         Optional[str] = Field(None)
 
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: dict) -> dict:
-        return _coerce_bools(data)
+        return _coerce_bools(data, bool_fields={"passed"})

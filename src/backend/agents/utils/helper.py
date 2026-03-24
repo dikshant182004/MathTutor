@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 load_dotenv()
 
-def _coerce_bools(data: dict) -> dict:
+def _coerce_bools(data: dict, bool_fields: set = None) -> dict:
     """
     LLMs (especially via Groq tool-calling) sometimes return 'true'/'false'
     strings instead of JSON booleans.  This coerces them before Pydantic
@@ -23,6 +23,8 @@ def _coerce_bools(data: dict) -> dict:
     """
     bool_like = {"true": True, "false": False, "1": True, "0": False}
     for k, v in data.items():
+        if bool_fields and k not in bool_fields:
+            continue
         if isinstance(v, str) and v.lower() in bool_like:
             data[k] = bool_like[v.lower()]
     return data

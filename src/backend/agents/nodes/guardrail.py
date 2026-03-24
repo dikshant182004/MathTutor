@@ -5,14 +5,14 @@ from backend.agents.nodes import *
 from functools import lru_cache
 from pathlib import Path
 
-_GUARDRAILS_DIR = Path(__file__).parent / "security_checks"
+_GUARDRAIL_POLICY_DIR = Path(__file__).resolve().parent / "security_checks"
 
 @lru_cache(maxsize=1)
 def _load_policies() -> dict:
     """Load all YAML policy files once and cache them."""
 
-    topic_policy     = yaml.safe_load((_GUARDRAILS_DIR / "topic_policy.yaml").read_text())
-    injection_policy = yaml.safe_load((_GUARDRAILS_DIR / "injection_patterns.yaml").read_text())
+    topic_policy     = yaml.safe_load((_GUARDRAIL_POLICY_DIR / "topic_policy.yaml").read_text())
+    injection_policy = yaml.safe_load((_GUARDRAIL_POLICY_DIR / "injection_patterns.yaml").read_text())
     return {
         "allowed_topics": topic_policy.get("allowed_topics", []),
         "blocked_categories": topic_policy.get("blocked_categories", []),
@@ -74,7 +74,7 @@ def _rule_based_check(text: str) -> tuple[bool, str, str]:
 
 class GuardrailAgent(BaseAgent):
     
-    def _build_prompt(self, raw_input: str, policies: dict) -> str:
+    def _build_guardrail_prompt(self, raw_input: str, policies: dict) -> str:
         allowed  = ", ".join(policies["allowed_topics"])
         blocked  = ", ".join(policies["blocked_categories"])
         borderline = policies["borderline_policy"]
@@ -126,7 +126,7 @@ class GuardrailAgent(BaseAgent):
 
             # ── Stage 2: LLM topic relevance check ────────────────────────────
             policies = _load_policies()
-            prompt   = self._build_prompt(raw_input, policies)
+            prompt   = self._build_guardrail_prompt(raw_input, policies)
 
             result: GuardrailOutput = self.llm.with_structured_output(GuardrailOutput).invoke(
                 [HumanMessage(content=prompt)]

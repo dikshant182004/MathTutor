@@ -10,6 +10,9 @@ class BaseAgent:
 
     Node mixins (e.g. SolverAgent, ParserAgent) can safely inherit this so they
     always have access to `self.llm` and any shared utilities.
+
+    self.llm      — llama-3.3-70b-versatile — for heavy reasoning nodes
+                    (solver, verifier, explainer)
     """
 
     def __init__(self):
@@ -23,8 +26,17 @@ class BaseAgent:
             api_key=key,
             model_name="llama-3.3-70b-versatile",
             temperature=0.1,
+            max_tokens=2048,
+            max_retries=2,
+        )
+
+        self.fast_llm = ChatGroq(
+            api_key=key,
+            model_name="llama-3.1-8b-instant",
+            temperature=0.1,
+            max_tokens=512,
+            max_retries=2,
         )
 
         # Used by input nodes (OCR/ASR) and any media-based tools.
         self.media_processor = MediaProcessor()
-

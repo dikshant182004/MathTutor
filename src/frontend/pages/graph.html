@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<script src="%%VIS_CDN_JS%%"></script>
+<link  href="%%VIS_CDN_CSS%%" rel="stylesheet"/>
+<style>%%INLINE_CSS%%</style>
+</head>
+<body>
+
+<div id="wrapper">
+
+  <!-- ── Graph canvas ─────────────────────────────────────────────────── -->
+  <div id="graph-canvas">
+    <div id="mynetwork"></div>
+
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <button class="tb-btn" onclick="fitGraph()">⊡ Fit</button>
+      <button class="tb-btn %%PHYSICS_ACTIVE%%" id="btn-physics" onclick="togglePhysics()">%%PHYSICS_LABEL%%</button>
+      <button class="tb-btn" onclick="zoomIn()">＋</button>
+      <button class="tb-btn" onclick="zoomOut()">－</button>
+      <button class="tb-btn" onclick="exportPNG()">⬇ PNG</button>
+    </div>
+
+    <!-- Stats bar -->
+    <div id="stats-bar">
+      <span id="stat-nodes"></span>
+      <span class="stat-sep">·</span>
+      <span id="stat-edges"></span>
+      <span class="stat-sep">·</span>
+      <span id="stat-selected">Nothing selected</span>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <div class="legend-title">NODE TYPES</div>
+      %%LEGEND_ROWS%%
+    </div>
+  </div>
+
+  <!-- ── Right detail panel ───────────────────────────────────────────── -->
+  <div id="panel">
+    <div id="panel-header">
+      <span id="panel-title">Node details</span>
+      <button id="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <div id="panel-body"></div>
+  </div>
+
+</div>
+
+<script>
+%%INLINE_JS%%
+</script>
+</body>
+</html>
