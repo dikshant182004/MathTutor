@@ -15,6 +15,7 @@ from backend.agents.nodes.solver import SolverAgent
 from backend.agents.nodes.verifier import VerifierAgent
 from backend.agents.nodes.safety import SafetyAgent
 from backend.agents.nodes.explainer import ExplainerAgent
+from backend.agents.nodes.direct_response import DirectResponseAgent   
 from backend.agents.nodes.manim_node import manim_node
 from backend.agents.nodes.hitl import HITLAgent
 from backend.agents.nodes.memory.memory_manager import memory_manager_node
@@ -45,12 +46,7 @@ def _route_after_detect(state: AgentState) -> str:
     return "guardrail_agent"
 
 
-# Issue 7 fix — route after OCR based on confidence
 def _route_after_ocr(state: AgentState) -> str:
-    """
-    ocr_node -> [guardrail_agent | hitl_node]
-    Triggers HITL when confidence is below threshold or text is empty.
-    """
     if state.get("hitl_required"):
         return "hitl_node"
     conf = state.get("ocr_confidence") or 0.0
@@ -60,12 +56,7 @@ def _route_after_ocr(state: AgentState) -> str:
     return "guardrail_agent"
 
 
-# Issue 7 fix — route after ASR based on confidence
 def _route_after_asr(state: AgentState) -> str:
-    """
-    asr_node -> [guardrail_agent | hitl_node]
-    Triggers HITL when confidence is below threshold or transcript is empty.
-    """
     if state.get("hitl_required"):
         return "hitl_node"
     conf = state.get("asr_confidence") or 0.0
@@ -89,21 +80,29 @@ def _route_after_parser(state: AgentState) -> str:
 
 def _route_after_intent_router(state: AgentState) -> str:
     """
-    intent_router -> [solver_agent | explainer_agent | hitl_node]
+    intent_router -> [solver_agent | direct_response_node | hitl_node]
 
-    solve / hint / formula_lookup → solver_agent  (solver handles all; verifier is
-        lenient for hint/formula — see _route_after_verifier)
-    explain → explainer_agent directly  (no new calculation needed)
+    ROUTING LOGIC:
+      solve / hint / formula_lookup → solver_agent  (existing solve pipeline)
+      explain                       → direct_response_node (no solver needed)
+      research / generate           → direct_response_node (web search + synthesis)
+
+    CHANGE FROM ORIGINAL:
+      Previously "explain" routed to explainer_agent which requires solver_output.
+      Now ALL non-solve intents go to direct_response_node which is self-contained.
+      The explainer_agent is still used after solver/verifier for "solve" intent.
     """
     plan        = state.get("solution_plan") or {}
     intent_type = plan.get("intent_type", "solve")
 
-    if intent_type == "explain":
-        # Skip solve+verify entirely; explainer will use LTM + problem text directly
-        logger.info("[Router] intent=explain — routing directly to explainer_agent")
-        return "explainer_agent"
+    # Non-solve intents: handle directly without solve pipeline
+    if intent_type in ("explain", "research", "generate"):
+        logger.info(f"[Router] intent={intent_type} — routing to direct_response_node")
+        return "direct_response_node"
 
-    # solve | hint | formula_lookup all go through solver
+    # hint and formula_lookup still go through solver (lightweight pass)
+    # solve goes through full solver pipeline
+    logger.info(f"[Router] intent={intent_type} — routing to solver_agent")
     return "solver_agent"
 
 
@@ -120,7 +119,7 @@ def _route_after_verifier(state: AgentState) -> str:
     """
     verifier_agent -> [safety | solver(retry) | hitl]
 
-    5a fix — for hint / formula_lookup intents, treat partially_correct as correct
+    For hint / formula_lookup intents, treat partially_correct as correct
     so we don't force a full retry just because a hint is incomplete.
     """
     verifier = state.get("verifier_output") or {}
@@ -166,6 +165,12 @@ def _route_after_hitl(state: AgentState) -> str:
     if hitl_type == "satisfaction":
         if state.get("student_satisfied") is True:
             return "store_ltm"
+        # Re-explain: check what intent we're serving to route correctly
+        plan        = state.get("solution_plan") or {}
+        intent_type = plan.get("intent_type", "solve")
+        if intent_type in ("explain", "research", "generate"):
+            # Re-run direct_response_node with follow-up context injected
+            return "direct_response_node"
         return "explainer_agent"
     return "guardrail_agent"
 
@@ -192,8 +197,6 @@ def _store_ltm_node(state: AgentState) -> dict:
         raise Agent_Exception(e, sys)
 
 
-# Issue 7 fix — inject HITL fields when confidence is too low
-# These are set here so hitl_node sees the right hitl_type/reason
 def _ocr_node_with_confidence_gate(state: AgentState) -> AgentState:
     """Wraps ocr_node; sets hitl fields when confidence fails."""
     state = ocr_node(state)
@@ -236,6 +239,7 @@ class MathTutorWorkflow(
     VerifierAgent,
     SafetyAgent,
     ExplainerAgent,
+    DirectResponseAgent,   
     HITLAgent,
 ):
     def __init__(self):
@@ -249,22 +253,22 @@ class MathTutorWorkflow(
         graph = StateGraph(AgentState)
 
         # ── Nodes ──────────────────────────────────────────────────────────────
-        graph.add_node("detect_input",    detect_input_type)
-        # Issue 7 fix — use wrapped versions that set hitl fields on low confidence
-        graph.add_node("ocr_node",        _ocr_node_with_confidence_gate)
-        graph.add_node("asr_node",        _asr_node_with_confidence_gate)
-        graph.add_node("guardrail_agent", self.guardrail_agent)
-        graph.add_node("retrieve_ltm",    _retrieve_ltm_node)
-        graph.add_node("parser_agent",    self.parser_agent)
-        graph.add_node("intent_router",   self.intent_router_agent)
-        graph.add_node("solver_agent",    self.solver_agent)
-        graph.add_node("tool_node",       ToolNode(SOLVER_TOOLS))
-        graph.add_node("verifier_agent",  self.verifier_agent)
-        graph.add_node("safety_agent",    self.safety_agent)
-        graph.add_node("explainer_agent", self.explainer_agent)
-        graph.add_node("manim_node",      manim_node)
-        graph.add_node("hitl_node",       self.hitl_node)
-        graph.add_node("store_ltm",       _store_ltm_node)
+        graph.add_node("detect_input",          detect_input_type)
+        graph.add_node("ocr_node",              _ocr_node_with_confidence_gate)
+        graph.add_node("asr_node",              _asr_node_with_confidence_gate)
+        graph.add_node("guardrail_agent",       self.guardrail_agent)
+        graph.add_node("retrieve_ltm",          _retrieve_ltm_node)
+        graph.add_node("parser_agent",          self.parser_agent)
+        graph.add_node("intent_router",         self.intent_router_agent)
+        graph.add_node("solver_agent",          self.solver_agent)
+        graph.add_node("tool_node",             ToolNode(SOLVER_TOOLS))
+        graph.add_node("verifier_agent",        self.verifier_agent)
+        graph.add_node("safety_agent",          self.safety_agent)
+        graph.add_node("explainer_agent",       self.explainer_agent)
+        graph.add_node("direct_response_node",  self.direct_response_agent)  # NEW
+        graph.add_node("manim_node",            manim_node)
+        graph.add_node("hitl_node",             self.hitl_node)
+        graph.add_node("store_ltm",             _store_ltm_node)
 
         # ── Entry ──────────────────────────────────────────────────────────────
         graph.set_entry_point("detect_input")
@@ -277,7 +281,6 @@ class MathTutorWorkflow(
              "guardrail_agent": "guardrail_agent", "hitl_node": "hitl_node"},
         )
 
-        # Issue 7 fix — conditional edges after ocr/asr (not plain edges)
         graph.add_conditional_edges(
             "ocr_node",
             _route_after_ocr,
@@ -306,12 +309,19 @@ class MathTutorWorkflow(
             {"hitl_node": "hitl_node", "intent_router": "intent_router"},
         )
 
-        # 5a fix — intent_router -> [solver_agent | explainer_agent]
+        # intent_router -> [solver_agent | direct_response_node]
         graph.add_conditional_edges(
             "intent_router",
             _route_after_intent_router,
-            {"solver_agent": "solver_agent", "explainer_agent": "explainer_agent"},
+            {
+                "solver_agent":         "solver_agent",
+                "direct_response_node": "direct_response_node",
+            },
         )
+
+        # direct_response_node -> hitl (satisfaction check)
+        # No manim, no verifier — response is complete
+        graph.add_edge("direct_response_node", "hitl_node")
 
         # ReAct loop: solver <-> tools; final -> verifier
         graph.add_conditional_edges(
@@ -341,17 +351,19 @@ class MathTutorWorkflow(
         graph.add_edge("explainer_agent", "manim_node")
         graph.add_edge("manim_node",      "hitl_node")
 
-        # hitl -> [detect_input | guardrail | solver | safety | explainer | store_ltm]
+        # hitl -> [detect_input | guardrail | solver | safety | explainer |
+        #           direct_response_node | store_ltm]
         graph.add_conditional_edges(
             "hitl_node",
             _route_after_hitl,
             {
-                "detect_input":    "detect_input",
-                "guardrail_agent": "guardrail_agent",
-                "solver_agent":    "solver_agent",
-                "safety_agent":    "safety_agent",
-                "explainer_agent": "explainer_agent",
-                "store_ltm":       "store_ltm",
+                "detect_input":         "detect_input",
+                "guardrail_agent":      "guardrail_agent",
+                "solver_agent":         "solver_agent",
+                "safety_agent":         "safety_agent",
+                "explainer_agent":      "explainer_agent",
+                "direct_response_node": "direct_response_node",
+                "store_ltm":            "store_ltm",
             },
         )
 

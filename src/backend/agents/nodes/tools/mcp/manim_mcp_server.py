@@ -21,13 +21,9 @@ mcp = FastMCP(
 OUTPUT_DIR = Path(os.getenv("MANIM_OUTPUT_DIR", "./manim_outputs"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Pin the Python interpreter used for manim subprocess renders ──────────────
-# sys.executable is captured HERE at import time (main process), before
-# uvicorn/FastMCP spawns worker threads that may inherit a different executable.
-# Override via env var MANIM_PYTHON if you need to point at a specific venv.
-#   e.g.  set MANIM_PYTHON=J:\MathTutor\myenv\Scripts\python.exe
 PYTHON_EXECUTABLE = os.getenv("MANIM_PYTHON") or sys.executable
 print(f"[ManimMCP] Using Python for renders: {PYTHON_EXECUTABLE}", flush=True)
+print(f"[ManimMCP] Output directory: {OUTPUT_DIR.resolve()}", flush=True)
 
 
 @mcp.tool
@@ -51,8 +47,8 @@ def render_manim_scene(
     -------
     {
         "success":    bool,
-        "video_path": str | None,   # absolute path to rendered file
-        "error":      str | None,   # present only on failure
+        "video_path": str | None,
+        "error":      str | None,
         "scene_class": str,
         "quality":     str,
     }
@@ -64,8 +60,6 @@ def render_manim_scene(
     }
     q_flag = quality_flags.get(quality, "-qm")
 
-    # Write temp file to system tmp dir (NOT output dir) so Manim's media folder
-    # stays clean and _find_output doesn't accidentally glob stale .py files.
     tmp_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -73,6 +67,8 @@ def render_manim_scene(
         ) as tmp:
             tmp.write(textwrap.dedent(scene_code))
             tmp_path = tmp.name
+
+        print(f"[ManimMCP] Rendering {scene_class} (quality={quality})", flush=True)
 
         cmd = [
             PYTHON_EXECUTABLE, "-m", "manim",
@@ -87,14 +83,15 @@ def render_manim_scene(
             cmd,
             capture_output=True,
             text=True,
-            timeout=180,          # 3-minute hard cap (HD renders can be slow)
+            timeout=180,
         )
 
         if result.returncode != 0:
+            print(f"[ManimMCP] Render failed: {result.stderr[-500:]}", flush=True)
             return {
                 "success":     False,
                 "video_path":  None,
-                "error":       result.stderr[-2000:],  # last 2 k chars of stderr
+                "error":       result.stderr[-2000:],
                 "scene_class": scene_class,
                 "quality":     quality,
             }
@@ -110,6 +107,7 @@ def render_manim_scene(
                 "quality":     quality,
             }
 
+        print(f"[ManimMCP] ✅ Video ready: {video_path}", flush=True)
         return {
             "success":     True,
             "video_path":  str(video_path),
@@ -157,25 +155,15 @@ def list_renders() -> dict:
 def _find_output(scene_class: str, fmt: str) -> Path | None:
     """
     Search OUTPUT_DIR recursively for a rendered file matching the scene class.
-
-    Manim writes to:
-        <OUTPUT_DIR>/videos/<script_stem>/<quality_dir>/<SceneClass>.<ext>
-
-    We search by class name first (most reliable), then fall back to the most
-    recently modified file with the right extension (handles edge cases where
-    Manim appends a suffix).
     """
     ext = f".{fmt}"
 
-    # Primary: exact match on scene class name
     for candidate in OUTPUT_DIR.rglob(f"{scene_class}{ext}"):
         return candidate.resolve()
 
-    # Secondary: file whose stem contains the scene class name
     for candidate in OUTPUT_DIR.rglob(f"*{scene_class}*{ext}"):
         return candidate.resolve()
 
-    # Fallback: most recently modified matching file (within last 5 minutes)
     now = time.time()
     candidates = [
         p for p in OUTPUT_DIR.rglob(f"*{ext}")
@@ -189,5 +177,11 @@ def _find_output(scene_class: str, fmt: str) -> Path | None:
 
 if __name__ == "__main__":
     port = int(os.getenv("MANIM_SERVER_PORT", "8765"))
-    print(f"[ManimMCP] Starting FastMCP server on http://localhost:{port}/mcp")
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    print(f"[ManimMCP] Starting server on http://0.0.0.0:{port}/mcp", flush=True)
+    print(f"[ManimMCP] Health check: http://localhost:{port}/mcp (GET)", flush=True)
+    # FIX: explicitly specify transport, host, and port
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=port,
+    )

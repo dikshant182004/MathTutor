@@ -3,16 +3,9 @@ import json
 import time
 from typing import Any
 
-# ── Redis key patterns ────────────────────────────────────────────────────────
-# LTM keys follow: ltm:{student_id}:{memory_type}:{memory_id}
-# STM checkpoints: managed by LangGraph RedisSaver
-
-_LTM_PREFIX  = "ltm:"
 _USER_PREFIX = "user:"
 
-
 def _safe_json(val: Any) -> Any:
-    """Return val if JSON-serialisable, else str(val)."""
     try:
         json.dumps(val)
         return val
@@ -31,24 +24,23 @@ def _epoch_to_date(ts) -> str:
         return str(ts)
 
 
-# ── Main graph builder ────────────────────────────────────────────────────────
-
 def build_graph_data(
     student_id: str,
-    redis_client,        # raw redis.Redis sync client
-    checkpointer,        # LangGraph RedisSaver
-    get_thread_history,  # callable(student_id) -> list[dict]
+    redis_client,
+    checkpointer,
+    get_thread_history,
     max_threads: int = 15,
     include_agent_nodes: bool = True,
 ) -> dict:
     """
     Returns {"nodes": [...], "edges": [...]} ready for vis.js.
 
-    Node schema:
-        id, label, type, group, title (hover HTML), detail (sidebar dict)
-
-    Edge schema:
-        from, to, label, arrows, dashes
+    Key pattern alignment (must match db_utils.py / memory_manager.py):
+        episodic:{student_id}:{episode_id}   — JSON doc, client.json().set(...)
+        semantic:{student_id}                — JSON doc, client.json().set(...)
+        procedural:{student_id}              — JSON doc, client.json().set(...)
+        user:{student_id}                    — Redis hash, client.hset(...)
+        thread:{thread_id}:meta              — Redis hash, client.hset(...)
     """
     nodes: list[dict] = []
     edges: list[dict] = []
@@ -119,17 +111,29 @@ def build_graph_data(
         _add_edge({"from": student_id, "to": tid, "label": "has_session",
                    "arrows": "to", "dashes": False})
 
-        # Read checkpoint state for this thread
+        # memory_graph_reader.py — replace the checkpoint read block (~line 120-135)
+
         if not include_agent_nodes:
             continue
+
         try:
             cfg  = {"configurable": {"thread_id": tid}}
             snap = checkpointer.get(cfg)
-            vals = (snap.values or {}) if snap else {}
+            # RedisSaver.get() returns a CheckpointTuple(config, checkpoint, metadata, ...)
+            # .values lives on the checkpoint field, not directly on the tuple
+            if snap is None:
+                vals = {}
+            elif hasattr(snap, "checkpoint") and isinstance(getattr(snap, "checkpoint", None), dict):
+                # LangGraph RedisSaver returns a CheckpointTuple; channel_values is the state
+                vals = snap.checkpoint.get("channel_values", {})
+            elif hasattr(snap, "values") and isinstance(snap.values, dict):
+                vals = snap.values
+            else:
+                vals = {}
         except Exception:
             vals = {}
 
-        # Agent payload log → agent_node per entry
+        # Agent payload log → one node per entry
         for entry in (vals.get("agent_payload_log") or []):
             node_name = entry.get("node", "unknown")
             nid       = f"{tid}__{node_name}"
@@ -171,85 +175,181 @@ def build_graph_data(
                 _add_edge({"from": tid, "to": tnid, "label": "used_tool",
                            "arrows": "to", "dashes": True})
 
-    # ── LTM nodes from Redis ──────────────────────────────────────────────────
-    # Key pattern: ltm:{student_id}:{type}:* (hash keys)
-    for mem_type in ("episodic", "semantic", "procedural"):
+    # ── LTM nodes — FIXED key patterns to match db_utils.py / memory_manager.py
+    # ─────────────────────────────────────────────────────────────────────────
+    # episodic:{student_id}:{episode_id}  → JSON doc via client.json().set(...)
+    # semantic:{student_id}               → JSON doc via client.json().set(...)
+    # procedural:{student_id}             → JSON doc via client.json().set(...)
+
+    # ── Episodic memories ─────────────────────────────────────────────────────
+    try:
+        ep_keys = redis_client.keys(f"episodic:{student_id}:*")
+    except Exception:
+        ep_keys = []
+
+    for raw_key in ep_keys:
+        key = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
         try:
-            pattern = f"{_LTM_PREFIX}{student_id}:{mem_type}:*"
-            keys    = redis_client.keys(pattern)
+            raw_data = redis_client.json().get(key, "$")
+            mem = raw_data[0] if raw_data else {}
         except Exception:
-            keys = []
+            mem = {}
+        if not mem:
+            continue
 
-        for raw_key in keys:
-            key = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
-            try:
-                raw_data = redis_client.hgetall(key)
-                mem = {
-                    (k.decode() if isinstance(k, bytes) else k):
-                    (v.decode() if isinstance(v, bytes) else v)
-                    for k, v in raw_data.items()
-                }
-            except Exception:
-                mem = {}
+        ep_id   = mem.get("episode_id", key.split(":")[-1])
+        node_id = f"episodic__{ep_id}"
+        summary = (mem.get("problem_summary") or ep_id)[:45]
 
-            mem_id  = key.split(":")[-1]
-            node_id = f"ltm__{mem_type}__{mem_id}"
-            summary = (mem.get("summary") or mem.get("description") or
-                       mem.get("content") or mem_id)[:45]
+        decay_val = mem.get("decay_score", "—")
+        _add_node({
+            "id":     node_id,
+            "label":  summary[:30],
+            "type":   "episodic",
+            "group":  "episodic",
+            "detail": {
+                "Type":        "Episodic",
+                "Problem":     summary,
+                "Topic":       mem.get("topic", "—"),
+                "Difficulty":  mem.get("difficulty", "—"),
+                "Outcome":     mem.get("outcome", "—"),
+                "Answer":      mem.get("final_answer", "—"),
+                "Attempts":    str(mem.get("solve_attempts", "—")),
+                "Decay score": str(decay_val),
+                "Created":     _epoch_to_date(mem.get("timestamp", 0)),
+            },
+            "title": f"<b>Episodic</b><br>{summary}",
+        })
+        _add_edge({
+            "from":   student_id,
+            "to":     node_id,
+            "label":  "has_episodic",
+            "arrows": "to",
+            "dashes": False,
+        })
 
-            detail = {
-                "Type":        mem_type.capitalize(),
-                "Summary":     summary,
-                "Created":     _epoch_to_date(mem.get("created_at", 0)),
-                "Decay score": mem.get("decay_score", "—"),
-            }
-            if mem_type == "episodic":
-                detail.update({
-                    "Problem":  mem.get("problem_text", "—")[:80],
-                    "Outcome":  mem.get("outcome", "—"),
-                    "Error":    mem.get("error_pattern", "—"),
-                    "Topic":    mem.get("topic", "—"),
-                })
-            elif mem_type == "semantic":
-                detail.update({
-                    "Concept":     mem.get("concept", "—"),
-                    "Confidence":  mem.get("confidence", "—"),
-                    "Formula":     mem.get("formula", "—"),
-                    "Last seen":   _epoch_to_date(mem.get("last_seen", 0)),
-                })
-            elif mem_type == "procedural":
-                detail.update({
-                    "Strategy":      mem.get("strategy", "—"),
-                    "Effectiveness": mem.get("effectiveness", "—"),
-                    "Applied":       mem.get("applied_count", "—") + " times",
-                    "Learned from":  mem.get("learned_from", "—"),
-                })
+    # ── Semantic memory ───────────────────────────────────────────────────────
+    try:
+        sem_raw = redis_client.json().get(f"semantic:{student_id}", "$")
+        sem = sem_raw[0] if sem_raw else {}
+    except Exception:
+        sem = {}
 
+    if sem:
+        weak   = sem.get("weak_topics", {})
+        strong = sem.get("strong_topics", {})
+        patterns = sem.get("mistake_patterns", [])
+
+        # One node for the semantic profile
+        sem_node_id = f"semantic__{student_id}"
+        weak_str   = ", ".join(f"{k}({v})" for k, v in weak.items() if v > 0) or "—"
+        strong_str = ", ".join(f"{k}({v})" for k, v in strong.items() if v > 0) or "—"
+        pat_str    = "; ".join(
+            p.get("pattern", "")[:40] for p in patterns[:3]
+        ) or "—"
+        _add_node({
+            "id":     sem_node_id,
+            "label":  "Semantic profile",
+            "type":   "semantic",
+            "group":  "semantic",
+            "detail": {
+                "Type":             "Semantic",
+                "Weak topics":      weak_str[:120],
+                "Strong topics":    strong_str[:120],
+                "Mistake patterns": pat_str[:200],
+                "Last updated":     _epoch_to_date(sem.get("last_updated", 0)),
+            },
+            "title": "<b>Semantic memory</b><br>Topic strengths &amp; mistakes",
+        })
+        _add_edge({
+            "from":   student_id,
+            "to":     sem_node_id,
+            "label":  "has_semantic",
+            "arrows": "to",
+            "dashes": False,
+        })
+
+        # One child node per weak topic (if any)
+        for topic, count in weak.items():
+            if count < 1:
+                continue
+            wnid = f"semantic_weak__{student_id}__{topic}"
             _add_node({
-                "id":     node_id,
-                "label":  summary[:30],
-                "type":   mem_type,
-                "group":  mem_type,
-                "detail": detail,
-                "title":  f"<b>{mem_type.capitalize()}</b><br>{summary}",
+                "id":    wnid,
+                "label": topic,
+                "type":  "semantic",
+                "group": "semantic",
+                "detail": {
+                    "Type":        "Weak topic",
+                    "Topic":       topic,
+                    "Fail count":  str(count),
+                },
+                "title": f"<b>Weak: {topic}</b><br>{count} failures",
             })
-            _add_edge({
-                "from":   student_id,
-                "to":     node_id,
-                "label":  f"has_{mem_type}",
-                "arrows": "to",
-                "dashes": False,
-            })
+            _add_edge({"from": sem_node_id, "to": wnid, "label": "weak_topic",
+                       "arrows": "to", "dashes": True})
 
-            # Link episodic memories to their source thread if thread_id is stored
-            src_thread = mem.get("thread_id")
-            if src_thread and src_thread in seen_node_ids:
-                _add_edge({
-                    "from":   src_thread,
-                    "to":     node_id,
-                    "label":  "generated",
-                    "arrows": "to",
-                    "dashes": True,
-                })
+    # ── Procedural memory ─────────────────────────────────────────────────────
+    try:
+        proc_raw = redis_client.json().get(f"procedural:{student_id}", "$")
+        proc = proc_raw[0] if proc_raw else {}
+    except Exception:
+        proc = {}
+
+    if proc:
+        strats = proc.get("strategy_success", {})
+        proc_node_id = f"procedural__{student_id}"
+        best_strats = []
+        for topic, topic_strats in strats.items():
+            for strat_name, data in topic_strats.items():
+                best_strats.append(
+                    f"{topic}: {strat_name} ({data.get('success_rate', 0):.0%})"
+                )
+
+        _add_node({
+            "id":     proc_node_id,
+            "label":  "Procedural profile",
+            "type":   "procedural",
+            "group":  "procedural",
+            "detail": {
+                "Type":         "Procedural",
+                "Strategies":   "; ".join(best_strats[:5]) or "—",
+                "Last updated": _epoch_to_date(proc.get("last_updated", 0)),
+            },
+            "title": "<b>Procedural memory</b><br>Strategy effectiveness",
+        })
+        _add_edge({
+            "from":   student_id,
+            "to":     proc_node_id,
+            "label":  "has_procedural",
+            "arrows": "to",
+            "dashes": False,
+        })
+
+        # One child node per topic strategy
+        for topic, topic_strats in strats.items():
+            if not topic_strats:
+                continue
+            best = max(topic_strats.items(),
+                       key=lambda kv: (kv[1].get("success_rate", 0),
+                                       -kv[1].get("attempts_avg", 99)))
+            strat_name, data = best
+            snid = f"procedural_strat__{student_id}__{topic}"
+            _add_node({
+                "id":    snid,
+                "label": topic,
+                "type":  "procedural",
+                "group": "procedural",
+                "detail": {
+                    "Type":         "Strategy",
+                    "Topic":        topic,
+                    "Best strategy":strat_name,
+                    "Success rate": f"{data.get('success_rate', 0):.0%}",
+                    "Avg attempts": str(data.get("attempts_avg", "—")),
+                },
+                "title": f"<b>{topic}</b><br>{strat_name}",
+            })
+            _add_edge({"from": proc_node_id, "to": snid, "label": "topic_strategy",
+                       "arrows": "to", "dashes": True})
 
     return {"nodes": nodes, "edges": edges}

@@ -30,6 +30,15 @@ class IntentRouterOutput(BaseModel):
         explain         → explainer_agent directly (no solve/verify)
         hint            → solver_agent but verifier skips to explainer on first pass
         formula_lookup  → solver_agent lightweight; verifier always passes
+        research       → web_search_tool + direct LLM synthesis; no solve pipeline
+                       e.g. "what are recent discoveries in mathematics?"
+        generate       → web_search_tool + LLM generates content (exam Qs, examples)
+                       e.g. "give me 5 practice problems on integration for JEE"
+ 
+    Graph routing (graph.py):
+      solve / hint / formula_lookup → solver_agent (full or lenient pipeline)
+      explain                       → explainer_agent directly
+      research / generate           → direct_response_node (web search + synthesis)
     """
     topic:           str           = Field(..., description="algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory")
     difficulty:      str           = Field(..., description="easy | medium | hard")
@@ -42,7 +51,9 @@ class IntentRouterOutput(BaseModel):
             "  solve          — full solve + verify pipeline (default for all problems)\n"
             "  explain        — student wants a concept explained, no new calculation needed\n"
             "  hint           — student wants a nudge, not a full solution\n"
-            "  formula_lookup — student is asking for a formula or theorem statement only"
+            "  formula_lookup — student is asking for a formula or theorem statement only\n"
+            "  research       — student wants info about recent/general math topics (no problem to solve)\n"
+            "  generate       — student wants practice problems, examples, or content generated"
         ),
     )
 

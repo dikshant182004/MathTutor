@@ -11,7 +11,7 @@ from backend.agents.state import make_initial_state
 from backend.agents.nodes.memory.memory_manager import prune_stale_episodic
 from backend.agents.utils.db_utils import (
     get_user_profile, get_or_create_user, create_thread,
-    get_thread_history        
+    get_thread_history
 )
 from backend.agents.nodes.tools.tools import clear_store, get_store_info, ingest_pdf
 
@@ -27,33 +27,46 @@ from frontend.templates.profile import build_profile_card
 st.set_page_config(page_title="Math Tutor", page_icon="🧮",
                    layout="wide", initial_sidebar_state="expanded")
 
-# ── Load global styles safely — must not crash before login check ─────────────
+# ── Load global styles ────────────────────────────────────────────────────────
 try:
     _css = (Path(__file__).parent / "templates" / "styles.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
 except FileNotFoundError:
-    pass  # styles are cosmetic; app must still render login page
+    pass
+
+# ── Suppress Streamlit sidebar nav tooltip ("keyboard_double_arrow_right") ───
+# Streamlit renders page-nav items with Material icon tooltips. We hide the
+# entire auto-generated nav AND its tooltip elements via CSS.
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNav"] *,
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavSeparator"] { display: none !important; }
+/* Also suppress any auto-tooltip that Streamlit attaches to sidebar buttons */
+[data-testid="stSidebar"] [title="keyboard_double_arrow_right"],
+[data-testid="stSidebar"] [aria-label="keyboard_double_arrow_right"] {
+    display: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("manim_outputs", exist_ok=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  AUTH GATE — must come before any st.user attribute access
+#  AUTH GATE
 # ══════════════════════════════════════════════════════════════════════════════
 if not st.user.is_logged_in:
     render_login_page()
     st.stop()
 
-# ── Populate google_user in session state once after login ────────────────────
-# This is the single source of truth for display name / email used by the
-# profile card and sidebar expander.  st.user is only valid past this point.
 if "google_user" not in st.session_state:
     st.session_state["google_user"] = {
         "name":  st.user.name  or "",
         "email": st.user.email or "",
     }
 
-# ── Resolve student identity from Google account ─────────────────────────────
 _email = st.user.email or ""
 _name  = st.user.name  or _email.split("@")[0]
 
@@ -65,10 +78,9 @@ if "student_id" not in st.session_state:
 
 
 def _logout() -> None:
-    """Clear all session state then hand off to Streamlit's auth logout."""
     for k in list(st.session_state.keys()):
         del st.session_state[k]
-    st.logout()   # clears the auth cookie and redirects to login
+    st.logout()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -83,20 +95,23 @@ def _init_session() -> None:
     sid = st.session_state["student_id"]
 
     defaults: dict = {
-        "thread_id":       None,
-        "threads_meta":    [],
-        "message_history": [],
-        "pdf_ingested":    False,
-        "hitl_pending":    False,
-        "hitl_question":   None,
-        "hitl_type":       "",
-        "hitl_payload":    None,
-        "activity_log":    [],
-        "current_node":    None,
-        "user_profile":    None,
+        "thread_id":            None,
+        "threads_meta":         [],
+        "message_history":      [],
+        "pdf_ingested":         False,
+        "hitl_pending":         False,
+        "hitl_question":        None,
+        "hitl_type":            "",
+        "hitl_payload":         None,
+        "activity_log":         [],
+        "current_node":         None,
+        "user_profile":         None,
         "_show_reexplain_form": False,
         "hitl_resuming":        False,
         "history_loaded":       False,
+        # FIX P2: persist the current question across HITL interrupts
+        "current_question":     None,
+        "current_question_mode": None,   # "text" | "image" | "audio"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -137,6 +152,9 @@ def _reset_chat() -> None:
         hitl_payload=None, activity_log=[], current_node=None,
         _show_reexplain_form=False, hitl_resuming=False,
         history_loaded=True,
+        # FIX P2: clear question banner on new chat
+        current_question=None,
+        current_question_mode=None,
     )
     st.session_state.pop("clarification_prefill", None)
     try:
@@ -220,7 +238,7 @@ def _extract_hitl_from_snap(snap) -> tuple[bool, Optional[dict]]:
             val = getattr(iv, "value", {}) or {}
             if isinstance(val, dict):
                 return True, val
-            
+
     vals           = snap.values or {}
     stored_payload = vals.get("hitl_interrupt")
     if isinstance(stored_payload, dict) and stored_payload.get("hitl_type"):
@@ -320,6 +338,64 @@ def _handle_chunk(chunk, badge_ph) -> Optional[str]:
                     result = t
         return result
     return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  QUESTION BANNER (FIX P2)
+#  Shows the current question as a persistent banner above the HITL block.
+#  Cleared only when satisfaction HITL is answered positively (solution done).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_question_banner() -> None:
+    """
+    Renders a sticky banner showing the current question being processed.
+    This persists through all intermediate HITL interrupts (clarification,
+    bad_input, verification) so the student always knows what they asked.
+    Cleared only when the satisfaction HITL resolves positively.
+    """
+    q    = st.session_state.get("current_question")
+    mode = st.session_state.get("current_question_mode", "text")
+    if not q:
+        return
+
+    if mode == "image":
+        icon, label = "📸", "Image uploaded"
+        display_text = label
+    elif mode == "audio":
+        icon, label = "🎤", "Audio uploaded"
+        display_text = label
+    else:
+        icon = "❓"
+        display_text = str(q)
+
+    # Truncate long questions
+    if len(display_text) > 200:
+        display_text = display_text[:197] + "…"
+
+    import html as _html
+    st.markdown(
+        f"""<div style="
+            background: linear-gradient(90deg, #0d1f33 0%, #0a1628 100%);
+            border: 1px solid #1e3a5a;
+            border-left: 4px solid #3b82f6;
+            border-radius: 8px;
+            padding: 10px 16px;
+            margin-bottom: 12px;
+            font-size: 0.88rem;
+            color: #c8d8f0;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        ">
+            <span style="font-size:1.1rem;flex-shrink:0">{icon}</span>
+            <div>
+                <div style="font-size:0.70rem;color:#4a6080;text-transform:uppercase;
+                            letter-spacing:0.08em;margin-bottom:3px">Current Question</div>
+                <div style="line-height:1.5">{_html.escape(display_text)}</div>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -426,6 +502,9 @@ with st.sidebar:
                 hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
                 hitl_resuming   = False,
                 _show_reexplain_form = False,
+                # Restore current_question from history if available
+                current_question = None,
+                current_question_mode = None,
             )
             st.rerun()
 
@@ -453,7 +532,6 @@ with col_chat:
     with h1:
         st.title("🧮 Math Tutor Agent")
     with h2:
-        # Navigation button — top-right corner
         if st.button("🧠 Memory", use_container_width=True, help="View your memory graph"):
             st.switch_page("pages/memory_viz.py")
 
@@ -490,6 +568,10 @@ with col_chat:
         if not log or log[-1]["node"] != "hitl_node":
             add_step("hitl_node", status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
+
+        # FIX P2: show question banner above HITL block for non-satisfaction HITLs
+        if not is_sat:
+            _render_question_banner()
 
         st.markdown(build_hitl_banner(hitl_type, question), unsafe_allow_html=True)
 
@@ -583,6 +665,11 @@ with col_chat:
                     break
             render_activity_panel(activity_ph)
 
+            # FIX P2: clear question banner only when student is satisfied
+            if is_sat and human_answer.get("satisfied"):
+                st.session_state["current_question"] = None
+                st.session_state["current_question_mode"] = None
+
             parts: list[str] = []
             with st.chat_message("assistant"):
                 bph = st.empty()
@@ -626,11 +713,14 @@ with col_chat:
                 st.session_state["message_history"] = _build_history_from_vals(post_vals)
                 st.session_state["history_loaded"]  = True
 
+                # FIX P4: show manim video if rendered
                 vp = post_vals.get("manim_video_path")
                 if vp and os.path.exists(str(vp)):
                     st.divider()
                     st.subheader("🎬 Visual Explanation")
                     st.video(str(vp))
+                    add_step("manim_node", "done", f"Video: {os.path.basename(str(vp))}")
+                    render_activity_panel(activity_ph)
 
                 interrupted, p2 = _extract_hitl_from_snap(post_snap)
                 is_pending = interrupted and "hitl_node" in post_next
@@ -678,6 +768,17 @@ with col_chat:
             st.session_state["activity_log"] = []
             st.session_state["current_node"] = None
             render_activity_panel(activity_ph)
+
+            # FIX P2: store current question for the persistent banner
+            if text_input:
+                st.session_state["current_question"] = text_input
+                st.session_state["current_question_mode"] = "text"
+            elif image_file:
+                st.session_state["current_question"] = image_file.name
+                st.session_state["current_question_mode"] = "image"
+            elif audio_file:
+                st.session_state["current_question"] = audio_file.name
+                st.session_state["current_question_mode"] = "audio"
 
             sp = make_initial_state(student_id=sid, thread_id=tid)
 
@@ -734,6 +835,7 @@ with col_chat:
                 st.session_state["message_history"] = _build_history_from_vals(fs_vals)
                 st.session_state["history_loaded"]  = True
 
+                # FIX P4: show manim video if rendered during initial stream
                 vp = fs_vals.get("manim_video_path")
                 if vp and os.path.exists(str(vp)):
                     st.divider()

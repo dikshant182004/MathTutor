@@ -30,13 +30,5 @@ class BaseAgent:
             max_retries=2,
         )
 
-        self.fast_llm = ChatGroq(
-            api_key=key,
-            model_name="llama-3.1-8b-instant",
-            temperature=0.1,
-            max_tokens=512,
-            max_retries=2,
-        )
-
         # Used by input nodes (OCR/ASR) and any media-based tools.
         self.media_processor = MediaProcessor()

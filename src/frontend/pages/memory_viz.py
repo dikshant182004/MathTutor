@@ -80,13 +80,13 @@ except Exception as _import_err:
 @st.cache_resource
 def _get_redis():
     try:
-        import os
-        host = os.getenv("REDIS_HOST", "localhost")
-        port = int(os.getenv("REDIS_PORT", 6379))
-        r    = redis.Redis(host=host, port=port, db=0)
+        import redis as _redis
+        from backend.agents.nodes.memory import REDIS_URL
+        r = _redis.from_url(REDIS_URL, decode_responses=True)
         r.ping()
         return r
-    except Exception:
+    except Exception as e:
+        st.warning(f"Redis connection failed: {e}")
         return None
 
 
