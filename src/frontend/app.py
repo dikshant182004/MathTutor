@@ -20,7 +20,7 @@ from frontend import st, TOOL_META, ANSWER_NODES, HITL_PREFIX, HITL_SAT_PREFIX, 
 from frontend.templates.activity_panel import (
     render_activity_panel, add_step,
     mark_previous_done, mark_all_done,
-    build_hitl_banner, build_history_hitl_banner,
+    build_history_hitl_banner,
 )
 from frontend.templates.profile import build_profile_card
 
@@ -206,14 +206,14 @@ def _build_history_from_vals(vals: dict) -> list[dict]:
     solutions = []
     for entry in conv:
         e = str(entry).strip()
-        if not e or e.startswith((HITL_PREFIX, HITL_SAT_PREFIX)) or not e.startswith("## 📘"):
+        if not e or e.startswith((HITL_PREFIX, HITL_SAT_PREFIX)) or not e.startswith("## "):
             continue
         k = f"a:{hashlib.md5(e.encode()).hexdigest()[:12]}"
         if k not in seen:
             seen.add(k)
             solutions.append(e)
 
-    if final and final.strip() and final.startswith("## 📘"):
+    if final and final.strip() and final.startswith("## "):
         k = f"a:{hashlib.md5(final.encode()).hexdigest()[:12]}"
         if k not in seen:
             seen.add(k)
@@ -569,11 +569,19 @@ with col_chat:
             add_step("hitl_node", status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
 
-        # FIX P2: show question banner above HITL block for non-satisfaction HITLs
+        # Show question banner above HITL block for non-satisfaction HITLs
         if not is_sat:
             _render_question_banner()
 
-        st.markdown(build_hitl_banner(hitl_type, question), unsafe_allow_html=True)
+        expander_title = {
+            "verification": "📋 Verifier Notes",
+            "clarification": "📝 Clarify the Problem",
+            "bad_input": "📤 Please Provide Better Input",
+            "satisfaction": "✅ Feedback",
+        }.get(hitl_type, "📋 Details")
+
+        with st.expander(expander_title, expanded=True):
+            st.markdown(question if question else "No additional details.")
 
         human_answer: Optional[dict] = None
 

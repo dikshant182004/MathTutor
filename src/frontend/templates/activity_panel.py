@@ -172,37 +172,43 @@ def render_activity_panel(placeholder) -> None:
 #  HITL BANNER BUILDERS
 #  Returns raw HTML strings — rendered via st.markdown(unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
-
 def build_hitl_banner(hitl_type: str, question: str) -> str:
     """
     Builds the coloured banner shown above the HITL input form.
-
-    hitl_type controls colour and title:
-        satisfaction → green banner  "✅ Solution Complete"
-        bad_input    → red banner    "🙋 Input Needed"
-        verification → red banner    "🙋 Verification Needed"
-        clarification→ red banner    "🙋 Clarification Needed"
+    
+    For long content (especially verification), we now show only a short preview 
+    in the banner and recommend using st.expander in app.py for the full text.
     """
     q = html.escape(question)
+    
+    # Create a short preview for the banner (prevents ugly overflow)
+    preview = question[:220]
+    if len(question) > 220:
+        preview += "..."
+    
+    preview_escaped = html.escape(preview)
 
     if hitl_type == "satisfaction":
         return (
             f'<div class="hitl-banner satisfaction">'
             f'  <div class="hitl-title">✅ Solution Complete</div>'
-            f'  <div class="hitl-body">{q}</div>'
+            f'  <div class="hitl-body">{q}</div>'   # satisfaction can show full since it's usually short
             f'</div>'
         )
+
     if hitl_type == "bad_input":
         title = "🙋 Input Needed"
     elif hitl_type == "verification":
-        title = "🙋 Verification Needed"
+        title = "🔍 Verification Needed by Expert"
     else:
         title = "🙋 Clarification Needed"
 
     return (
         f'<div class="hitl-banner">'
         f'  <div class="hitl-title">{title}</div>'
-        f'  <div class="hitl-body">{q}</div>'
+        f'  <div class="hitl-body">'
+        f'    <strong>Preview:</strong> {preview_escaped}'
+        f'  </div>'
         f'</div>'
     )
 

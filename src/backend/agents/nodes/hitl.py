@@ -102,12 +102,23 @@ class HITLAgent(BaseAgent):
             # the checkpoint carries the OCR-enriched message, not just the bare
             # parser clarification reason.
             rich_prompt = interrupt_payload.get("prompt") or reason
-            state["hitl_reason"] = rich_prompt  # mutate so checkpoint has it
+
+            # CRITICAL: interrupt() raises GraphInterrupt immediately — nothing
+            # after it executes, and state mutations made HERE are not committed.
+            # The only data that survives the interrupt is what is passed as the
+            # interrupt() argument (stored in snap.tasks[].interrupts[].value).
+            # So we ensure the full rich_prompt is inside interrupt_payload["prompt"]
+            # (already set by the _build_* helpers) and also set "hitl_reason" in
+            # the payload so _extract_hitl_from_snap's fallback path finds it.
+            interrupt_payload["hitl_reason"] = rich_prompt
 
             payload(
                 state, "hitl_node",
                 summary = f"INTERRUPT [{hitl_type.upper()}] — waiting for human",
-                fields = {"Type": hitl_type, "Reason": (rich_prompt or "")[:120]},
+                fields = {
+                    "Type":   hitl_type,
+                    "Reason": (rich_prompt or "")[:280],
+                },
             )
             logger.info(
                 f"[HITL] Suspending graph | type={hitl_type} | "

@@ -203,7 +203,7 @@ class ExplainerAgent(BaseAgent):
             return {
                 "explainer_output": explainer_dict,
                 "final_response":   final_md,
-                "conversation_log":   [final_md],  
+                "conversation_log": [final_md],  
                 "manim_scene_code": manim_code,
                 "hitl_required":    True,
                 "hitl_type":        "satisfaction",

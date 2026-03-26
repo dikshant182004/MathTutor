@@ -52,21 +52,21 @@ class DirectResponseAgent(BaseAgent):
     def _explain_prompt(self, problem_text: str, topic: str, ltm_hint: str) -> str:
         base = f"""You are an expert JEE mathematics teacher.
 
-A student has asked for an explanation — there is NO specific numeric problem to solve.
-Explain the concept, theorem, or method clearly and rigorously for a JEE student.
+        A student has asked for an explanation — there is NO specific numeric problem to solve.
+        Explain the concept, theorem, or method clearly and rigorously for a JEE student.
 
-STRUCTURE YOUR RESPONSE:
-1. **Core Idea** — what is it and why does it matter? (2-3 sentences)
-2. **Key Formula / Statement** — the precise mathematical statement using LaTeX ($...$)
-3. **Intuition** — a concrete analogy or geometric interpretation
-4. **When to Use** — what types of JEE problems trigger this concept?
-5. **Worked Mini-Example** — a short illustrative calculation
-6. **Common Pitfalls** — 2-3 mistakes students make
+        STRUCTURE YOUR RESPONSE:
+        1. **Core Idea** — what is it and why does it matter? (2-3 sentences)
+        2. **Key Formula / Statement** — the precise mathematical statement using LaTeX ($...$)
+        3. **Intuition** — a concrete analogy or geometric interpretation
+        4. **When to Use** — what types of JEE problems trigger this concept?
+        5. **Worked Mini-Example** — a short illustrative calculation
+        6. **Common Pitfalls** — 2-3 mistakes students make
 
-Use $inline math$ and $$display math$$ for all expressions.
+        Use $inline math$ and $$display math$$ for all expressions.
 
-Topic area: {topic}
-Student's question: {problem_text}"""
+        Topic area: {topic}
+        Student's question: {problem_text}"""
 
         if ltm_hint:
             base += f"\n\nPERSONALISATION (tailor your explanation):\n{ltm_hint}"
@@ -75,29 +75,29 @@ Student's question: {problem_text}"""
     def _hint_prompt(self, problem_text: str, topic: str) -> str:
         return f"""You are an expert JEE mathematics teacher giving a Socratic hint.
 
-The student wants a nudge — NOT a full solution.
-Give them:
-1. **Direction** — the right technique/approach (1-2 sentences, no answer)
-2. **Key Insight** — the one thing they need to notice
-3. **First Step** — describe the very first move only
+        The student wants a nudge — NOT a full solution.
+        Give them:
+        1. **Direction** — the right technique/approach (1-2 sentences, no answer)
+        2. **Key Insight** — the one thing they need to notice
+        3. **First Step** — describe the very first move only
 
-Do NOT solve the problem. Do NOT reveal the answer. Be encouraging.
+        Do NOT solve the problem. Do NOT reveal the answer. Be encouraging.
 
-Topic: {topic}
-Problem: {problem_text}"""
+        Topic: {topic}
+        Problem: {problem_text}"""
 
     def _formula_prompt(self, problem_text: str, topic: str) -> str:
         return f"""You are an expert JEE mathematics teacher.
 
-The student wants a formula or theorem statement. Provide:
-1. **Formula** — precise statement in LaTeX ($$...$$)
-2. **Variables** — what each symbol means
-3. **Conditions** — when does this formula apply?
-4. **JEE Usage** — in what types of problems is this used?
-5. **Related Formulae** — 1-2 closely related results
+        The student wants a formula or theorem statement. Provide:
+        1. **Formula** — precise statement in LaTeX ($$...$$)
+        2. **Variables** — what each symbol means
+        3. **Conditions** — when does this formula apply?
+        4. **JEE Usage** — in what types of problems is this used?
+        5. **Related Formulae** — 1-2 closely related results
 
-Topic: {topic}
-Request: {problem_text}"""
+        Topic: {topic}
+        Request: {problem_text}"""
 
     def _research_prompt(self, problem_text: str, topic: str, web_context: str) -> str:
         ctx_block = (
@@ -107,20 +107,20 @@ Request: {problem_text}"""
         )
         return f"""You are an expert mathematics educator.
 
-A JEE student asked about a mathematical topic beyond a standard textbook problem.
-Answer engagingly for a motivated student.
-{ctx_block}
-STRUCTURE:
-1. **Overview** — what is this about? (2-3 sentences)
-2. **Key Details** — the substantive content
-3. **Why It Matters** — relevance and real applications
-4. **Connection to JEE** — how does this connect to their studies?
-5. **Explore Next** — 1-2 topics to investigate further
+        A JEE student asked about a mathematical topic beyond a standard textbook problem.
+        Answer engagingly for a motivated student.
+        {ctx_block}
+        STRUCTURE:
+        1. **Overview** — what is this about? (2-3 sentences)
+        2. **Key Details** — the substantive content
+        3. **Why It Matters** — relevance and real applications
+        4. **Connection to JEE** — how does this connect to their studies?
+        5. **Explore Next** — 1-2 topics to investigate further
 
-Use $inline$ or $$display$$ for any math.
+        Use $inline$ or $$display$$ for any math.
 
-Topic: {topic}
-Question: {problem_text}"""
+        Topic: {topic}
+        Question: {problem_text}"""
 
     def _generate_prompt(
         self,
@@ -135,29 +135,29 @@ Question: {problem_text}"""
         )
         return f"""You are an expert JEE mathematics teacher creating practice material.
 
-Generate high-quality practice content matching the student's request.
-{ctx_block}
-REQUIREMENTS:
-- Difficulty: {difficulty} (JEE standard)
-- Topic: {topic}
-- Each problem must be self-contained
-- For MCQ: provide 4 options (A/B/C/D), mark correct answer in Answer Key
-- Use $$display math$$ for equations
-- Include a brief answer key at the end
+        Generate high-quality practice content matching the student's request.
+        {ctx_block}
+        REQUIREMENTS:
+        - Difficulty: {difficulty} (JEE standard)
+        - Topic: {topic}
+        - Each problem must be self-contained
+        - For MCQ: provide 4 options (A/B/C/D), mark correct answer in Answer Key
+        - Use $$display math$$ for equations
+        - Include a brief answer key at the end
 
-FORMAT:
-**Problem 1:**
-[problem statement]
+        FORMAT:
+        **Problem 1:**
+        [problem statement]
 
-**Problem 2:**
-[problem statement]
+        **Problem 2:**
+        [problem statement]
 
----
-**Answer Key:**
-1. [answer]
-2. [answer]
+        ---
+        **Answer Key:**
+        1. [answer]
+        2. [answer]
 
-Student's request: {problem_text}"""
+        Student's request: {problem_text}"""
 
     def direct_response_agent(self, state: AgentState) -> dict:
         try:
@@ -198,6 +198,7 @@ Student's request: {problem_text}"""
                 prompt = self._explain_prompt(problem_text, topic, ltm_hint)
 
             # ── LLM call ──────────────────────────────────────────────────────
+            human_msg = HumanMessage(content=problem_text or prompt)
             response = self.llm.invoke([HumanMessage(content=prompt)])
             content  = (response.content or "").strip()
 
@@ -253,6 +254,7 @@ Student's request: {problem_text}"""
             )
 
             return {
+                "messages":           [human_msg, response],
                 "solver_output":      stub_solver,
                 "verifier_output":    stub_verifier,
                 "safety_passed":      True,

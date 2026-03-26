@@ -40,7 +40,6 @@ class AgentState(TypedDict):
     hitl_reason          : Optional[str]
     hitl_type            : Optional[str]         
     hitl_interrupt       : Optional[dict]        
-    user_corrected_text  : Optional[str]         
     human_feedback       : Optional[str]         
     student_satisfied    : Optional[bool]        
     follow_up_question   : Optional[str]         

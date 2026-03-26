@@ -22,6 +22,10 @@ def detect_input_type(state: AgentState) -> AgentState:
         # state["ltm_context"]      = None
         state["manim_scene_code"] = None
         state["manim_video_path"] = None
+        state["student_satisfied"]   = None     # reset satisfaction/follow-up fields
+        state["follow_up_question"]  = None
+        state["human_feedback"]      = None
+        state["user_corrected_text"] = None
 
         # Properly clear messages using RemoveMessage
         existing_messages = state.get("messages") or []
