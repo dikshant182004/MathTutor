@@ -22,10 +22,8 @@ src/logs
 *.log
 *.log.*
 
-# ── Manim Render Output ───────────────────────────────────────────────────────
-/manim_outputs
-/media
-__pycache__/manim_*
+# ── diagram Render Output ───────────────────────────────────────────────────────
+/diagram_outputs
 
 # ── Python Cache ──────────────────────────────────────────────────────────────
 __pycache__/

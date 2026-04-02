@@ -133,7 +133,7 @@ class SafetyAgent(BaseAgent):
                 },
             )
             logger.info(f"[Safety] passed={result.passed}")
-            return updates
+            return {**updates, "agent_payload_log": state.get("agent_payload_log") or []}
 
         except Exception as e:
             logger.error(f"[Safety] failed: {e}")

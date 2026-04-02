@@ -67,20 +67,19 @@
 
 .step-payload {
     margin-top: 6px;
-    border-top: 1px solid #333;
+    border-top: 1px solid #2a2a2a;
     padding-top: 5px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 0 0 4px 4px;
 }
-.step-payload summary {
-    cursor: pointer;
+
+.payload-summary {
     font-size: 0.72rem;
-    color: #888;
-    user-select: none;
-    list-style: none;
-    outline: none;
+    color: #7a9bbf;
+    font-weight: 500;
+    margin-bottom: 4px;
+    padding: 1px 0;
 }
-.step-payload summary::-webkit-details-marker { display: none; }
-.step-payload summary::before                 { content: "▶ "; font-size: 0.65rem; }
-details[open] .step-payload summary::before   { content: "▼ "; }
 
 .payload-table {
     width: 100%;

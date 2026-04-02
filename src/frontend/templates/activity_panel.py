@@ -13,7 +13,6 @@ def add_step(
     Called by:
         _process_node_update() — when a new node fires during streaming
         HITL block              — when the graph pauses for human input
-        Manim block             — when a video is rendered
     """
     meta = AGENT_META.get(node, {"icon": "⚙️", "label": node})
     st.session_state["activity_log"].append({
@@ -86,10 +85,10 @@ def build_payload_html(payload: dict) -> str:
     table_html = f'<table class="payload-table">{rows}</table>' if rows else ""
 
     return (
-        f'<details class="step-payload">'
-        f'  <summary>{summary_text}</summary>'
+        f'<div class="step-payload">'
+        f'  <div class="payload-summary">▸ {summary_text}</div>'
         f'  {table_html}'
-        f'</details>'
+        f'</div>'
     )
 
 

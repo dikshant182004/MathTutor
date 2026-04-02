@@ -86,7 +86,7 @@ class VerifierAgent(BaseAgent):
                 },
             )
             logger.info(f"[Verifier] status={result.status} confidence={result.confidence:.2f}")
-            return updates
+            return {**updates, "agent_payload_log": state.get("agent_payload_log") or []}
 
         except Exception as e:
             logger.error(f"[Verifier] failed: {e}")

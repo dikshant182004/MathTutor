@@ -70,7 +70,7 @@ class IntentRouterAgent(BaseAgent):
                 f"[Router] topic={result.topic} difficulty={result.difficulty} "
                 f"intent={result.intent_type}"
             )
-            return {"solution_plan": result.model_dump()}
+            return {"solution_plan": result.model_dump(), "agent_payload_log": state.get("agent_payload_log") or []}
 
         except Exception as e:
             logger.error(f"[Router] failed: {e}")

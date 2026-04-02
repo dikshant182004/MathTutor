@@ -16,8 +16,8 @@ from backend.agents.nodes.verifier import VerifierAgent
 from backend.agents.nodes.safety import SafetyAgent
 from backend.agents.nodes.explainer import ExplainerAgent
 from backend.agents.nodes.direct_response import DirectResponseAgent   
-from backend.agents.nodes.manim_node import manim_node
 from backend.agents.nodes.hitl import HITLAgent
+from backend.agents.utils.helper import _log_payload as payload
 from backend.agents.nodes.memory.memory_manager import memory_manager_node
 from backend.agents.utils.db_utils import build_stm_checkpointer
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
@@ -143,9 +143,17 @@ def _route_after_verifier(state: AgentState) -> str:
 
 
 def _route_after_safety(state: AgentState) -> str:
-    """safety_agent -> [explainer | END]"""
+    """safety_agent -> [explainer_agent | hitl_node | END]
+ 
+    solve/hint/formula_lookup path : safety -> explainer_agent
+    explain/research/generate path : safety -> hitl_node  (direct_response already set final_response)
+    """
     if state.get("safety_passed") is False:
         return "END"
+    plan        = state.get("solution_plan") or {}
+    intent_type = plan.get("intent_type", "solve")
+    if intent_type in ("explain", "research", "generate"):
+        return "hitl_node"
     return "explainer_agent"
 
 
@@ -182,7 +190,65 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
             state["raw_text"] = state["user_corrected_text"]
         state["ltm_mode"] = "retrieve"
         out = memory_manager_node(state)
-        return {"ltm_mode": "retrieve", **out}
+
+        # ── Build payload for activity panel ──────────────────────────────
+        ltm = out.get("ltm_context") or {}
+        eps = ltm.get("similar_episodes") or []
+        weak = ltm.get("weak_topics") or {}
+        strong = ltm.get("strong_topics") or {}
+        patterns = ltm.get("mistake_patterns") or []
+        best_strat = ltm.get("best_strategy")
+        avg_att = ltm.get("avg_attempts")
+
+        # Summarise episodes
+        ep_lines = []
+        for ep in eps[:3]:
+            ep_lines.append(
+                f"{ep.get('topic','?')} ({ep.get('difficulty','?')}) "
+                f"→ {ep.get('outcome','?')} | ans: {ep.get('final_answer','?')}"
+            )
+
+        # Summarise weak/strong topics
+        weak_str = ", ".join(
+            f"{t}({c})" for t, c in weak.items() if c > 0
+        ) or "none"
+        strong_str = ", ".join(
+            f"{t}({c})" for t, c in strong.items() if c > 0
+        ) or "none"
+
+        # Mistake patterns (top 2)
+        pat_str = "; ".join(
+            p.get("pattern", "")[:60] for p in patterns[:2]
+        ) or "none"
+
+        summary_parts = []
+        if eps:
+            summary_parts.append(f"{len(eps)} similar episode(s) found")
+        if best_strat:
+            summary_parts.append(f"best strategy: {best_strat}")
+        if any(c > 0 for c in weak.values()):
+            top_weak = max(weak, key=weak.get)
+            summary_parts.append(f"weak: {top_weak}")
+        summary = " | ".join(summary_parts) if summary_parts else "no prior history"
+
+        payload(
+            state, "retrieve_ltm",
+            summary=summary,
+            fields={
+                "Similar episodes":  "\n".join(ep_lines) if ep_lines else "none",
+                "Weak topics":       weak_str,
+                "Strong topics":     strong_str,
+                "Mistake patterns":  pat_str,
+                "Best strategy":     f"{best_strat} (avg {avg_att:.1f} attempts)" if best_strat and avg_att else best_strat or "none",
+                "Episodes retrieved": str(len(eps)),
+            },
+        )
+
+        return {
+            "ltm_mode": "retrieve",
+            **out,
+            "agent_payload_log": state.get("agent_payload_log") or [],
+        }
     except Exception as e:
         raise Agent_Exception(e, sys)
 
@@ -192,7 +258,40 @@ def _store_ltm_node(state: AgentState) -> dict:
         state = dict(state)
         state["ltm_mode"] = "store"
         out = memory_manager_node(state)
-        return {"ltm_mode": "store", **out}
+        
+        # ── Build payload for activity panel ──────────────────────────────
+        parsed       = state.get("parsed_data") or {}
+        plan         = state.get("solution_plan") or {}
+        verifier_out = state.get("verifier_output") or {}
+        solver_out   = state.get("solver_output") or {}
+
+        topic      = parsed.get("topic") or "—"
+        difficulty = plan.get("difficulty") or "—"
+        outcome    = verifier_out.get("status") or "—"
+        answer     = solver_out.get("final_answer") or "—"
+        attempts   = state.get("solve_iterations") or 1
+
+        payload(
+            state, "store_ltm",
+            summary=f"Stored | topic={topic} | outcome={outcome}",
+            fields={
+                "Topic":      topic,
+                "Difficulty": difficulty,
+                "Outcome":    outcome,
+                "Answer":     answer[:80],
+                "Attempts":   str(attempts),
+                "Episodic":   "✓ saved",
+                "Semantic":   "✓ updated",
+                "Procedural": "✓ updated",
+            },
+        )
+
+        return {
+            "ltm_mode": "store",
+            **out,
+            "agent_payload_log": state.get("agent_payload_log") or [],
+        }
+    
     except Exception as e:
         raise Agent_Exception(e, sys)
 
@@ -266,7 +365,6 @@ class MathTutorWorkflow(
         graph.add_node("safety_agent",          self.safety_agent)
         graph.add_node("explainer_agent",       self.explainer_agent)
         graph.add_node("direct_response_node",  self.direct_response_agent)  # NEW
-        graph.add_node("manim_node",            manim_node)
         graph.add_node("hitl_node",             self.hitl_node)
         graph.add_node("store_ltm",             _store_ltm_node)
 
@@ -319,9 +417,8 @@ class MathTutorWorkflow(
             },
         )
 
-        # direct_response_node -> hitl (satisfaction check)
-        # No manim, no verifier — response is complete
-        graph.add_edge("direct_response_node", "hitl_node")
+        # direct_response_node -> safety_agent (same safety check as solve path)
+        graph.add_edge("direct_response_node", "safety_agent")
 
         # ReAct loop: solver <-> tools; final -> verifier
         graph.add_conditional_edges(
@@ -344,15 +441,12 @@ class MathTutorWorkflow(
         graph.add_conditional_edges(
             "safety_agent",
             _route_after_safety,
-            {"explainer_agent": "explainer_agent", "END": END},
+            {"explainer_agent": "explainer_agent", "hitl_node": "hitl_node", "END": END},
         )
 
-        # explainer -> manim -> hitl (satisfaction)
-        graph.add_edge("explainer_agent", "manim_node")
-        graph.add_edge("manim_node",      "hitl_node")
-
-        # hitl -> [detect_input | guardrail | solver | safety | explainer |
-        #           direct_response_node | store_ltm]
+        # explainer -> hitl (satisfaction check)
+        graph.add_edge("explainer_agent", "hitl_node")
+     
         graph.add_conditional_edges(
             "hitl_node",
             _route_after_hitl,

@@ -35,12 +35,15 @@ except FileNotFoundError:
     pass
 
 # ── Suppress Streamlit sidebar nav tooltip ("keyboard_double_arrow_right") ───
+# Streamlit renders page-nav items with Material icon tooltips. We hide the
+# entire auto-generated nav AND its tooltip elements via CSS.
 st.markdown("""
 <style>
 [data-testid="stSidebarNav"],
 [data-testid="stSidebarNav"] *,
 [data-testid="stSidebarNavItems"],
 [data-testid="stSidebarNavSeparator"] { display: none !important; }
+/* Also suppress any auto-tooltip that Streamlit attaches to sidebar buttons */
 [data-testid="stSidebar"] [title="keyboard_double_arrow_right"],
 [data-testid="stSidebar"] [aria-label="keyboard_double_arrow_right"] {
     display: none !important;
@@ -91,21 +94,21 @@ def _init_session() -> None:
     sid = st.session_state["student_id"]
 
     defaults: dict = {
-        "thread_id":             None,
-        "threads_meta":          [],
-        "message_history":       [],
-        "pdf_ingested":          False,
-        "hitl_pending":          False,
-        "hitl_question":         None,
-        "hitl_type":             "",
-        "hitl_payload":          None,
-        "activity_log":          [],
-        "current_node":          None,
-        "user_profile":          None,
-        "_show_reexplain_form":  False,
-        "hitl_resuming":         False,
-        "history_loaded":        False,
-        "current_question":      None,
+        "thread_id":            None,
+        "threads_meta":         [],
+        "message_history":      [],
+        "pdf_ingested":         False,
+        "hitl_pending":         False,
+        "hitl_question":        None,
+        "hitl_type":            "",
+        "hitl_payload":         None,
+        "activity_log":         [],
+        "current_node":         None,
+        "user_profile":         None,
+        "_show_reexplain_form": False,
+        "hitl_resuming":        False,
+        "history_loaded":       False,
+        "current_question":     None,
         "current_question_mode": None,   # "text" | "image" | "audio"
     }
     for k, v in defaults.items():
@@ -295,21 +298,6 @@ def _process_node_update(node_name: str, patch: dict, badge_ph) -> Optional[str]
                 s["detail"] = "Memory saved ✓"
                 break
 
-    # ── DirectResponse tool signals (web search bypasses ToolNode) ──────────
-    for tc in patch.get("direct_response_tool_calls") or []:   ## just a hack to show our direct response tool node in the ui 
-        n     = tc.get("name", "web_search_tool")
-        m     = TOOL_META.get(n, {"icon": "🌐", "label": "Web Search"})
-        query = (tc.get("args") or {}).get("query", "")
-        add_step(  
-            n, status="tool",
-            detail  = query[:80] or m["label"],
-            payload = {
-                "summary": f'{m["icon"]} {m["label"]}',
-                "fields":  {"Query": query[:120] or "—", "Tool": n},
-            },
-        )
-        badge_ph.caption(f'🔧 {m["label"]}…')
-
     if patch.get("final_response"):
         badge_ph.empty()
         for s in reversed(log):
@@ -327,7 +315,6 @@ def _process_node_update(node_name: str, patch: dict, badge_ph) -> Optional[str]
             badge_ph.empty()
             return str(last.content)
 
-        # ── BUG 1 FIX: tool cards with correct icon/label/payload ─────────────
         if last and isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
             names = [tc["name"] for tc in last.tool_calls]
             for tc in last.tool_calls:
@@ -335,14 +322,14 @@ def _process_node_update(node_name: str, patch: dict, badge_ph) -> Optional[str]
                 m     = TOOL_META.get(n, {"icon": "🔧", "label": n})
                 query = (tc.get("args") or {}).get("query", "")
                 add_step(
-                    n,                    # real tool name → AGENT_META resolves icon+label
+                    n,                          # real tool name → AGENT_META resolves icon+label
                     status  = "tool",
                     detail  = query[:80] if query else m["label"],
                     payload = {
                         "summary": f'{m["icon"]} {m["label"]}',
                         "fields":  {
-                            "Query": query[:120] if query else "—",
-                            "Tool":  n,
+                            "Query":  query[:120] if query else "—",
+                            "Tool":   n,
                         },
                     },
                 )
@@ -364,22 +351,15 @@ def _handle_chunk(chunk, badge_ph) -> Optional[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  QUESTION BANNER (BUG 2 FIX)
-#  Renders into a st.empty() placeholder passed in — can be wiped cleanly.
-#  The OLD version used st.markdown() directly which burns into the DOM and
-#  cannot be removed without a full rerun.
+#  QUESTION BANNER (FIX P2)
+#  Shows the current question as a persistent banner above the HITL block.
+#  Cleared only when satisfaction HITL is answered positively (solution done).
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _render_question_banner(placeholder) -> None:
-    """
-    Renders the current question into a st.empty() placeholder.
-    Call placeholder.empty() to wipe it instantly without a rerun.
-    """
-    import html as _html
-
+    """Renders current question into a st.empty() placeholder — can be wiped."""
     q    = st.session_state.get("current_question")
     mode = st.session_state.get("current_question_mode", "text")
-
     if not q:
         placeholder.empty()
         return
@@ -389,12 +369,13 @@ def _render_question_banner(placeholder) -> None:
     elif mode == "audio":
         icon, display_text = "🎤", "Audio uploaded"
     else:
-        icon         = "❓"
+        icon = "❓"
         display_text = str(q)
 
     if len(display_text) > 200:
         display_text = display_text[:197] + "…"
 
+    import html as _html
     with placeholder.container():
         st.markdown(
             f"""<div style="
@@ -525,8 +506,8 @@ with st.sidebar:
                 hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
                 hitl_resuming   = False,
                 _show_reexplain_form = False,
-                # BUG 2 FIX: clear question banner when switching threads
-                current_question      = None,
+                # Restore current_question from history if available
+                current_question = None,
                 current_question_mode = None,
             )
             st.rerun()
@@ -572,17 +553,11 @@ with col_chat:
             with st.chat_message(role):
                 st.markdown(c)
 
-    # ── BUG 2 FIX: question banner placeholder ────────────────────────────────
-    # Created ONCE here at a fixed position in the render tree.
-    # _render_question_banner() writes into it; placeholder.empty() wipes it.
-    # The old approach called st.markdown() directly inside the HITL block which
-    # burned the banner into the DOM with no way to remove it without a rerun.
-    question_banner_ph = st.empty()
-    _render_question_banner(question_banner_ph)
-
     # ══════════════════════════════════════════════════════════════════════════
     #  HITL BLOCK
     # ══════════════════════════════════════════════════════════════════════════
+    # ADD this line right before:  if st.session_state.get("hitl_pending"):
+    question_banner_ph = st.empty()
     if st.session_state.get("hitl_pending"):
         payload   = st.session_state.get("hitl_payload") or {}
         question  = (st.session_state.get("hitl_question")
@@ -600,16 +575,17 @@ with col_chat:
             add_step("hitl_node", status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
 
-        # BUG 2 FIX: banner is now rendered above at fixed position, NOT here.
-        # For satisfaction HITL wipe the banner immediately so student sees it's done.
-        if is_sat:
+        # Show question banner above HITL block for non-satisfaction HITLs
+        if not is_sat:
+            _render_question_banner(question_banner_ph)
+        else:
             question_banner_ph.empty()
 
         expander_title = {
-            "verification":  "📋 Verifier Notes",
+            "verification": "📋 Verifier Notes",
             "clarification": "📝 Clarify the Problem",
-            "bad_input":     "📤 Please Provide Better Input",
-            "satisfaction":  "✅ Feedback",
+            "bad_input": "📤 Please Provide Better Input",
+            "satisfaction": "✅ Feedback",
         }.get(hitl_type, "📋 Details")
 
         with st.expander(expander_title, expanded=True):
@@ -705,48 +681,43 @@ with col_chat:
                     break
             render_activity_panel(activity_ph)
 
-            # BUG 2 FIX: clear question + banner on satisfaction
+            # FIX P2: clear question banner only when student is satisfied
             if is_sat and human_answer.get("satisfied"):
-                st.session_state["current_question"]      = None
+                st.session_state["current_question"] = None
                 st.session_state["current_question_mode"] = None
                 question_banner_ph.empty()
 
-            # BUG 2 FIX: guard the assistant bubble — only paint if stream yields content.
-            # The old code opened st.chat_message("assistant") unconditionally which
-            # permanently painted a blank red robot icon even when the stream was empty.
             parts: list[str] = []
-            bph = st.empty()   # badge placeholder lives outside the bubble
+            with st.chat_message("assistant"):
+                bph = st.empty()
 
-            def _resume():
-                try:
-                    snap = chatbot.get_state(config=_cfg(tid))
-                    if "hitl_node" not in list(snap.next or []):
-                        logger.warning("[app] Resume called but graph not at hitl_node — skipping")
-                        return
-                    for ev in chatbot.stream(
-                        Command(resume=human_answer),
-                        config=_cfg(tid), stream_mode="updates",
-                    ):
-                        t = _handle_chunk(ev, bph)
-                        render_activity_panel(activity_ph)
-                        if t:
-                            parts.append(t)
-                            yield t
-                except GraphInterrupt:
-                    pass
-                except Exception as e:
-                    error_msg = f"⚠️ Something went wrong: {str(e)[:200]}"
-                    parts.append(error_msg)
-                    yield error_msg
+                def _resume():
+                    try:
+                        snap = chatbot.get_state(config=_cfg(tid))
+                        if "hitl_node" not in list(snap.next or []):
+                            logger.warning("[app] Resume called but graph not at hitl_node — skipping")
+                            return
+                        for ev in chatbot.stream(
+                            Command(resume=human_answer),
+                            config=_cfg(tid), stream_mode="updates",
+                        ):
+                            t = _handle_chunk(ev, bph)
+                            render_activity_panel(activity_ph)
+                            if t:
+                                parts.append(t)
+                                yield t
+                    except GraphInterrupt:
+                        pass
+                    except Exception as e:
+                        error_msg = f"⚠️ Something went wrong: {str(e)[:200]}"
+                        parts.append(error_msg)
+                        yield error_msg
 
-            # Collect stream first — only paint bubble when there is actual content
-            collected = list(_resume())
-            bph.empty()
-            if collected:
-                with st.chat_message("assistant"):
-                    st.markdown("".join(collected))
+                st.write_stream(_resume())
+
+            if parts:
                 st.session_state["message_history"].append(
-                    {"role": "assistant", "content": "".join(collected)}
+                    {"role": "assistant", "content": "".join(parts)}
                 )
 
             mark_all_done()
@@ -771,12 +742,6 @@ with col_chat:
                         hitl_question=p2.get("prompt") or p2.get("message"),
                         hitl_type=p2.get("hitl_type", ""),
                     )
-                else:
-                    # Graph finished with no further HITL — ensure banner is cleared
-                    st.session_state["current_question"]      = None
-                    st.session_state["current_question_mode"] = None
-                    question_banner_ph.empty()
-
             except Exception:
                 st.session_state["message_history"] = _load_history(tid)
                 st.session_state["history_loaded"]  = True
@@ -816,24 +781,16 @@ with col_chat:
             st.session_state["current_node"] = None
             render_activity_panel(activity_ph)
 
-            # BUG 2 FIX: wipe old banner and reset BEFORE setting new question
-            # so there is never a frame where the old question text shows briefly
-            question_banner_ph.empty()
-            st.session_state["current_question"]      = None
-            st.session_state["current_question_mode"] = None
-
+            # FIX P2: store current question for the persistent banner
             if text_input:
-                st.session_state["current_question"]      = text_input
+                st.session_state["current_question"] = text_input
                 st.session_state["current_question_mode"] = "text"
             elif image_file:
-                st.session_state["current_question"]      = image_file.name
+                st.session_state["current_question"] = image_file.name
                 st.session_state["current_question_mode"] = "image"
             elif audio_file:
-                st.session_state["current_question"]      = audio_file.name
+                st.session_state["current_question"] = audio_file.name
                 st.session_state["current_question_mode"] = "audio"
-
-            # Render the new banner immediately into the placeholder
-            _render_question_banner(question_banner_ph)
 
             sp = make_initial_state(student_id=sid, thread_id=tid)
 
@@ -864,7 +821,7 @@ with col_chat:
                     st.audio(audio_file)
 
             with st.chat_message("assistant"):
-                bph    = st.empty()
+                bph = st.empty()
                 rparts: list[str] = []
 
                 def _stream():
@@ -884,9 +841,9 @@ with col_chat:
             render_activity_panel(activity_ph)
 
             try:
-                fs      = chatbot.get_state(config=_cfg(tid))
-                fs_vals = fs.values or {}
-                fs_next = list(fs.next or [])
+                fs       = chatbot.get_state(config=_cfg(tid))
+                fs_vals  = fs.values or {}
+                fs_next  = list(fs.next or [])
                 st.session_state["message_history"] = _build_history_from_vals(fs_vals)
                 st.session_state["history_loaded"]  = True
 
@@ -899,14 +856,6 @@ with col_chat:
                         hitl_type=p.get("hitl_type", ""),
                     )
                     st.rerun()
-                else:
-                    # BUG 2 FIX: graph finished cleanly with no HITL pending
-                    # (e.g. research/explain intents that skip satisfaction HITL)
-                    # Clear the banner now so it doesn't persist into next question.
-                    st.session_state["current_question"]      = None
-                    st.session_state["current_question_mode"] = None
-                    question_banner_ph.empty()
-
             except Exception:
                 st.session_state["message_history"] = _load_history(tid)
                 st.session_state["history_loaded"]  = True
@@ -918,8 +867,3 @@ with col_chat:
                         hitl_type=p.get("hitl_type", ""),
                     )
                     st.rerun()
-                else:
-                    # Exception path — still clear the banner
-                    st.session_state["current_question"]      = None
-                    st.session_state["current_question_mode"] = None
-                    question_banner_ph.empty()

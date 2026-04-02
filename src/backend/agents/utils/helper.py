@@ -1,6 +1,7 @@
 import json
 import tempfile
 import os
+import re 
 import sys
 from typing import Optional, Tuple
 
@@ -45,6 +46,7 @@ def _log_payload(state: dict, node: str, summary: str, fields: dict) -> None:
         "fields":  {k: str(v)[:200] for k, v in fields.items() if v not in (None, "", [], {})},
     })
     state["agent_payload_log"] = log
+    return log
 
 
 def _render_markdown(result, problem_text: str) -> str:
@@ -160,6 +162,27 @@ def _render_markdown(result, problem_text: str) -> str:
     lines.append(f"*Difficulty: {badge}*")
 
     return "\n".join(lines)
+
+
+def _parse_xml_response(raw_text: str) -> tuple:
+    """
+    Parse the XML-tagged response the LLM is asked to produce.
+
+    Expected format:
+        <content>
+        ...markdown here, no escaping needed...
+        </content>
+
+    Falls back gracefully: if tags are missing, treats whole text as content.
+    """
+    content_match = re.search(r"<content>(.*?)</content>", raw_text, re.S)
+    
+    content = content_match.group(1).strip() if content_match else raw_text.strip()
+
+    if not content_match:
+        logger.warning("[DirectResponse] <content> tag missing — using raw text as content")
+
+    return content
 
 
 def _get_secret(key: str, default: str = "") -> str:

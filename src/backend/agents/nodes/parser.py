@@ -58,7 +58,7 @@ class ParserAgent(BaseAgent):
                 },
             )
             logger.info(f"[Parser] topic={parsed.topic} needs_clarification={parsed.needs_clarification}")
-            return updates
+            return {**updates, "agent_payload_log": state.get("agent_payload_log") or []}
         
         except Exception as e:
             logger.error(f"[Parser] failed: {e}")

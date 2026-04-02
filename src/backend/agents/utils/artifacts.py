@@ -61,7 +61,7 @@ class IntentRouterOutput(BaseModel):
     @classmethod
     def _coerce(cls, data: dict) -> dict:
         return _coerce_bools(data, bool_fields=set())
-
+    
 
 class VerifierOutput(BaseModel):
     status: str = Field(..., description="correct | incorrect | partially_correct | needs_human")
@@ -132,19 +132,7 @@ class ExplainerOutput(BaseModel):
     key_formulae:      List[str]  = Field(default_factory=list)
     key_concepts:      List[str]  = Field(default_factory=list)
     common_mistakes:   List[str]  = Field(default_factory=list)
-    needs_diagram:     Union[bool, str]       = Field(False)
-    manim_hint:        Optional[str] = Field(None)
     difficulty_rating: str        = Field(..., description="easy | medium | hard")
-
-    #  enforce manim_hint is present when needs_diagram=True
-    @model_validator(mode="after")
-    def _require_hint_when_diagram(self) -> "ExplainerOutput":
-        if self.needs_diagram and not self.manim_hint:
-            object.__setattr__(
-                self, "manim_hint",
-                "Draw a clear diagram illustrating the key geometric or graphical concept in this problem."
-            )
-        return self
 
     @model_validator(mode="before")
     @classmethod

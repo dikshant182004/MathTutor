@@ -19,9 +19,11 @@ AGENT_META: dict[str, dict] = {
     "safety_agent":          {"icon": "🔒", "label": "Safety Agent"},
     "explainer_agent":       {"icon": "📚", "label": "Explainer / Tutor"},
     "direct_response_node":  {"icon": "💬", "label": "Direct Response Agent"},
-    "manim_node":            {"icon": "🎬", "label": "Manim Visualiser"},
     "hitl_node":             {"icon": "🙋", "label": "Human-in-the-Loop"},
     "store_ltm":             {"icon": "💾", "label": "Store Long-Term Memory"},
+    "rag_tool":              {"icon": "📄", "label": "RAG — PDF search"},
+    "web_search_tool":       {"icon": "🌐", "label": "Web Search (Tavily)"},
+    "calculator_tool":       {"icon": "🔢", "label": "Symbolic Calculator"},
 }
 
 # ── Tool metadata ─────────────────────────────────────────────────────────────

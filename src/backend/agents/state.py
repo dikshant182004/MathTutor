@@ -29,10 +29,8 @@ class AgentState(TypedDict):
     explainer_output:   Optional[dict]           # ExplainerOutput
     solve_iterations:   int                      # solver↔verifier loop counter
 
-    manim_scene_code:  Optional[str] 
-    manim_video_path:   Optional[str]            # path returned by MCP server
-
     agent_payload_log: Optional[List[dict]]
+    direct_response_tool_calls: Optional[list]   # web search signals from DirectResponseAgent
     conversation_log: Annotated[List[str], add]
     final_response: Optional[str]
 
@@ -114,7 +112,6 @@ def make_initial_state(
         # Explanation
         "explainer_output":    None,
         "final_response":      None,
-        "manim_scene_code":    None,
  
         # Memory
         "ltm_mode":            None,

@@ -14,18 +14,16 @@ def detect_input_type(state: AgentState) -> AgentState:
         state["solver_output"]    = None
         state["verifier_output"]  = None
         state["explainer_output"] = None
-        # state["final_response"]   = None
         state["solution_plan"]    = None
         state["parsed_data"]      = None
         state["safety_passed"]    = None
         state["safety_reason"]    = None
-        # state["ltm_context"]      = None
-        state["manim_scene_code"] = None
-        state["manim_video_path"] = None
         state["student_satisfied"]   = None     # reset satisfaction/follow-up fields
         state["follow_up_question"]  = None
         state["human_feedback"]      = None
         state["user_corrected_text"] = None
+        state["agent_payload_log"]= None
+        state["direct_response_tool_calls"] = None 
 
         # Properly clear messages using RemoveMessage
         existing_messages = state.get("messages") or []
