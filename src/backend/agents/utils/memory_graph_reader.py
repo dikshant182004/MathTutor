@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import json
 import time
 from typing import Any
@@ -110,8 +111,6 @@ def build_graph_data(
         _add_node(session_node)
         _add_edge({"from": student_id, "to": tid, "label": "has_session",
                    "arrows": "to", "dashes": False})
-
-        # memory_graph_reader.py — replace the checkpoint read block (~line 120-135)
 
         if not include_agent_nodes:
             continue
@@ -269,7 +268,7 @@ def build_graph_data(
             "dashes": False,
         })
 
-        # One child node per weak topic (if any)
+        # One child node per weak topic (count > 0)
         for topic, count in weak.items():
             if count < 1:
                 continue
@@ -280,13 +279,59 @@ def build_graph_data(
                 "type":  "semantic",
                 "group": "semantic",
                 "detail": {
-                    "Type":        "Weak topic",
-                    "Topic":       topic,
-                    "Fail count":  str(count),
+                    "Type":       "Weak topic",
+                    "Topic":      topic,
+                    "Fail count": str(count),
                 },
-                "title": f"<b>Weak: {topic}</b><br>{count} failures",
+                "title": f"<b>Weak: {topic}</b><br>{count} struggles",
             })
             _add_edge({"from": sem_node_id, "to": wnid, "label": "weak_topic",
+                       "arrows": "to", "dashes": True})
+
+        # One child node per strong topic (count > 0)
+        for topic, count in strong.items():
+            if count < 1:
+                continue
+            snid = f"semantic_strong__{student_id}__{topic}"
+            _add_node({
+                "id":    snid,
+                "label": topic,
+                "type":  "semantic",
+                "group": "semantic",
+                "detail": {
+                    "Type":          "Strong topic",
+                    "Topic":         topic,
+                    "Success count": str(count),
+                },
+                "title": f"<b>Strong: {topic}</b><br>{count} successes",
+            })
+            _add_edge({"from": sem_node_id, "to": snid, "label": "strong_topic",
+                       "arrows": "to", "dashes": True})
+
+        # One child node per unique mistake pattern
+        for pat in patterns:
+            pattern_text = pat.get("pattern", "")
+            pat_topic    = pat.get("topic", "")
+            pat_count    = pat.get("count", 1)
+            if not pattern_text:
+                continue
+            # Use a hash of pattern text as a stable node ID
+            pid  = hashlib.md5(f"{student_id}{pat_topic}{pattern_text}".encode()).hexdigest()[:10]
+            mnid = f"semantic_mistake__{student_id}__{pid}"
+            _add_node({
+                "id":    mnid,
+                "label": pattern_text[:28] + ("…" if len(pattern_text) > 28 else ""),
+                "type":  "semantic",
+                "group": "semantic",
+                "detail": {
+                    "Type":    "Mistake pattern",
+                    "Topic":   pat_topic or "—",
+                    "Pattern": pattern_text[:200],
+                    "Count":   str(pat_count),
+                },
+                "title": f"<b>Mistake ({pat_topic})</b><br>{pattern_text[:60]}",
+            })
+            _add_edge({"from": sem_node_id, "to": mnid, "label": "mistake_pattern",
                        "arrows": "to", "dashes": True})
 
     # ── Procedural memory ─────────────────────────────────────────────────────
@@ -299,12 +344,22 @@ def build_graph_data(
     if proc:
         strats = proc.get("strategy_success", {})
         proc_node_id = f"procedural__{student_id}"
-        best_strats = []
-        for topic, topic_strats in strats.items():
-            for strat_name, data in topic_strats.items():
-                best_strats.append(
-                    f"{topic}: {strat_name} ({data.get('success_rate', 0):.0%})"
-                )
+
+        # Show only the BEST strategy per topic in the summary (not all strategies)
+        best_per_topic = []
+        for _topic, _topic_strats in strats.items():
+            if not _topic_strats:
+                continue
+            _best_name, _best_data = max(
+                _topic_strats.items(),
+                key=lambda kv: (kv[1].get("success_rate", 0),
+                                -kv[1].get("attempts_avg", 99)),
+            )
+            best_per_topic.append(
+                f"{_topic}: {_best_name[:40]} "
+                f"({_best_data.get('success_rate', 0):.0%} | "
+                f"avg {_best_data.get('attempts_avg', '?')} attempts)"
+            )
 
         _add_node({
             "id":     proc_node_id,
@@ -313,7 +368,8 @@ def build_graph_data(
             "group":  "procedural",
             "detail": {
                 "Type":         "Procedural",
-                "Strategies":   "; ".join(best_strats[:5]) or "—",
+                "Best strategy per topic": "; ".join(best_per_topic[:5]) or "—",
+                "Topics tracked": str(len(strats)),
                 "Last updated": _epoch_to_date(proc.get("last_updated", 0)),
             },
             "title": "<b>Procedural memory</b><br>Strategy effectiveness",

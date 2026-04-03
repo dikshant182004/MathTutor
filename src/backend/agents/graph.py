@@ -67,15 +67,15 @@ def _route_after_asr(state: AgentState) -> str:
 
 
 def _route_after_guardrail(state: AgentState) -> str:
-    """guardrail_agent -> [retrieve_ltm | END]"""
+    """guardrail_agent -> [parser_agent | END]"""
     if state.get("guardrail_passed") is False:
         return "END"
-    return "retrieve_ltm"
+    return "parser_agent"
 
 
 def _route_after_parser(state: AgentState) -> str:
-    """parser_agent -> [hitl | intent_router]"""
-    return "hitl_node" if state.get("hitl_required") else "intent_router"
+    """parser_agent -> [hitl | retrieve_ltm]"""
+    return "hitl_node" if state.get("hitl_required") else "retrieve_ltm"
 
 
 def _route_after_intent_router(state: AgentState) -> str:
@@ -258,7 +258,7 @@ def _store_ltm_node(state: AgentState) -> dict:
         state = dict(state)
         state["ltm_mode"] = "store"
         out = memory_manager_node(state)
-        
+
         # ── Build payload for activity panel ──────────────────────────────
         parsed       = state.get("parsed_data") or {}
         plan         = state.get("solution_plan") or {}
@@ -390,22 +390,22 @@ class MathTutorWorkflow(
             {"guardrail_agent": "guardrail_agent", "hitl_node": "hitl_node"},
         )
 
-        # guardrail -> [retrieve_ltm | END]
+        # guardrail -> [parser_agent | END]
         graph.add_conditional_edges(
             "guardrail_agent",
             _route_after_guardrail,
-            {"retrieve_ltm": "retrieve_ltm", "END": END},
+            {"parser_agent": "parser_agent", "END": END},
         )
 
-        # retrieve_ltm -> parser
-        graph.add_edge("retrieve_ltm", "parser_agent")
-
-        # parser -> [hitl | intent_router]
+        # parser -> [hitl | retrieve_ltm]
         graph.add_conditional_edges(
             "parser_agent",
             _route_after_parser,
-            {"hitl_node": "hitl_node", "intent_router": "intent_router"},
+            {"hitl_node": "hitl_node", "retrieve_ltm": "retrieve_ltm"},
         )
+
+        # retrieve_ltm -> intent_router
+        graph.add_edge("retrieve_ltm", "intent_router")
 
         # intent_router -> [solver_agent | direct_response_node]
         graph.add_conditional_edges(

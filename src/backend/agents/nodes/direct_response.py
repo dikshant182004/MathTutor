@@ -190,7 +190,7 @@ class DirectResponseAgent(BaseAgent):
                 "- Do NOT add any text before <content>."
             )
 
-            raw_response = self.llm.invoke(
+            raw_response = self.reserve_llm.invoke(
                 [SystemMessage(content=_SYSTEM), HumanMessage(content=prompt)]
             )
             raw_text = (raw_response.content or "").strip()
