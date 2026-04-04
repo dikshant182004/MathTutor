@@ -484,52 +484,57 @@ with st.sidebar:
             for t in sorted(_fallback_threads(), reverse=True)[:20]
         ]
 
-    for meta in metas:
-        tid = meta.get("thread_id", "")
-        if not tid:
-            continue
-        active  = tid == st.session_state["thread_id"]
-        summary = (meta.get("problem_summary") or "").strip()
-        topic   = (meta.get("topic") or "").strip()
-        outcome = (meta.get("outcome") or "").strip()
-        title   = summary[:40] or f"{tid[:10]}…"
-        label   = f"{'▶ ' if active else ''}{title}"
-        sub     = " · ".join(filter(None, [topic, outcome]))
+    scroll_container = st.container(height=420, border=True)
+    with scroll_container:
+        if not metas:
+            st.info("No conversations yet. Start solving problems!")
+        else:
+            for meta in metas:
+                tid = meta.get("thread_id", "")
+                if not tid:
+                    continue
+                active  = tid == st.session_state["thread_id"]
+                summary = (meta.get("problem_summary") or "").strip()
+                topic   = (meta.get("topic") or "").strip()
+                outcome = (meta.get("outcome") or "").strip()
+                title   = summary[:40] or f"{tid[:10]}…"
+                label   = f"{'▶ ' if active else ''}{title}"
+                sub     = " · ".join(filter(None, [topic, outcome]))
 
-        if st.button(label, key=f"t_{tid}", use_container_width=True, help=sub or None):
-            try:
-                snap = chatbot.get_state(config=_cfg(tid))
-                snap_vals  = snap.values or {}
-                next_nodes = list(snap.next or [])
-                history    = _build_history_from_vals(snap_vals)
-                interrupted, payload = _extract_hitl_from_snap(snap)
-            except Exception:
-                snap_vals  = {}
-                next_nodes = []
-                history    = []
-                interrupted, payload = False, None
+                if st.button(label, key=f"t_{tid}", use_container_width=True, help=sub or None):
+                    try:
+                        snap = chatbot.get_state(config=_cfg(tid))
+                        snap_vals  = snap.values or {}
+                        next_nodes = list(snap.next or [])
+                        history    = _build_history_from_vals(snap_vals)
+                        interrupted, payload = _extract_hitl_from_snap(snap)
+                    except Exception:
+                        snap_vals  = {}
+                        next_nodes = []
+                        history    = []
+                        interrupted, payload = False, None
 
-            is_genuinely_pending = interrupted and "hitl_node" in next_nodes
+                    is_genuinely_pending = interrupted and "hitl_node" in next_nodes
 
-            st.session_state.update(
-                thread_id       = tid,
-                message_history = history,
-                history_loaded  = True,
-                pdf_ingested    = get_store_info(tid) is not None,
-                activity_log    = [],
-                current_node    = None,
-                hitl_pending    = is_genuinely_pending,
-                hitl_payload    = payload if is_genuinely_pending else None,
-                hitl_question   = ((payload or {}).get("prompt") or
-                                   (payload or {}).get("message")) if is_genuinely_pending else None,
-                hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
-                hitl_resuming   = False,
-                _show_reexplain_form = False,
-                # BUG 2 FIX: clear question banner when switching threads
-                current_question      = None,
-                current_question_mode = None,
-            )
-            st.rerun()
+                    st.session_state.update(
+                        thread_id       = tid,
+                        message_history = history,
+                        history_loaded  = True,
+                        pdf_ingested    = get_store_info(tid) is not None,
+                        activity_log    = [],
+                        current_node    = None,
+                        hitl_pending    = is_genuinely_pending,
+                        hitl_payload    = payload if is_genuinely_pending else None,
+                        hitl_question   = ((payload or {}).get("prompt") or
+                                        (payload or {}).get("message")) if is_genuinely_pending else None,
+                        hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
+                        hitl_resuming   = False,
+                        _show_reexplain_form = False,
+                        # BUG 2 FIX: clear question banner when switching threads
+                        current_question      = None,
+                        current_question_mode = None,
+                    )
+                    st.rerun()
 
     # ── Admin ─────────────────────────────────────────────────────────────────
     st.divider()

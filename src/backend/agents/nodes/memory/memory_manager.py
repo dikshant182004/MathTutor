@@ -194,9 +194,7 @@ def store_episodic_memory(
         [f"{topic} {difficulty} {problem_summary}"],
         EMBED_INPUT_TYPE_DOC,
     )
-    # as_buffer=True → bytes for RedisVL storage; we convert the numpy row
-    emb_bytes = embedding[0].astype(np.float32).tobytes()
-
+    
     doc = {
         "student_id":      student_id,
         "episode_id":      ep_id,
@@ -209,7 +207,7 @@ def store_episodic_memory(
         "timestamp":       now,
         "access_count":    0,
         "decay_score":     1.0,
-        "embedding":       emb_bytes.hex(),  # hex-encode bytes for JSON storage
+        "embedding":       embedding[0].astype(np.float32).tolist(),  # hex-encode bytes for JSON storage
     }
     key = episodic_key(student_id, ep_id)
     client.json().set(key, "$", doc)
@@ -377,12 +375,10 @@ def retrieve_ltm(student_id: str, problem_text: str, topic: str) -> dict:
 
     # ── 1. Vector search (episodic) ────────────────────────────────────────────
     try:
-        q_emb = _embed_texts(
-            [f"{topic} {problem_text[:200]}"],
-            EMBED_INPUT_TYPE_QUERY,
-        )
+        query_text = f"{topic} {problem_text[:200]}".strip() if topic else problem_text[:200]
+        q_emb = _embed_texts([query_text], EMBED_INPUT_TYPE_QUERY)
         query = VectorQuery(
-            vector           = q_emb[0].tobytes(),
+            vector           = q_emb[0].astype(np.float32).tobytes(),
             vector_field_name= "embedding",
             return_fields    = [
                 "student_id", "episode_id", "topic", "difficulty",
@@ -544,7 +540,7 @@ def memory_manager_node(state: dict) -> dict:
             problem_text = problem_text,
             topic        = topic,
         )
-        logger.info(f"[MemMgr] LTM retrieved | student={student_id}")
+        logger.debug(f"[MemMgr] retrieve | topic='{topic}' problem_text='{problem_text[:60]}'")
         return {"ltm_context": ltm_context}
 
     elif ltm_mode == "store":
@@ -562,50 +558,95 @@ def memory_manager_node(state: dict) -> dict:
         strategy        = plan.get("solver_strategy") or ""
         suggested_fix   = verifier_out.get("suggested_fix") or ""
 
+        # ── Flow gate ─────────────────────────────────────────────────────────
+        # Only solver flow (solve/hint/formula_lookup) goes through the verifier
+        # and produces meaningful outcome/strategy/mistake data.
+        # direct_response flow (explain/research/generate) has no verifier, no
+        # real outcome, and uses research-style strategy strings — storing those
+        # would corrupt semantic/procedural memory with meaningless data.
+        intent_type    = plan.get("intent_type", "solve")
+        is_solver_flow = intent_type in ("solve", "hint", "formula_lookup")
+
+        # Final outcome from verifier (only meaningful for solver flow).
+        # store_ltm is only reached after student_satisfied=True, which is only
+        # reachable after verifier says "correct" — so outcome is always "correct"
+        # at this point for the solver flow.
         outcome = (
             "correct"   if verifier_status == "correct"      else
             "hitl"      if verifier_status == "needs_human"  else
             "incorrect"
         )
-        mistake = (
-            suggested_fix[:80].strip()
-            if (suggested_fix and outcome != "correct")
-            else None
-        )
 
-        store_episodic_memory(
-            student_id      = student_id,
-            topic           = topic,
-            difficulty      = difficulty,
-            problem_summary = problem_text[:200],
-            final_answer    = final_answer,
-            outcome         = outcome,
-            solve_attempts  = solve_attempts,
-        )
-        update_semantic_memory(
-            student_id      = student_id,
-            topic           = topic,
-            outcome         = outcome,
-            mistake_pattern = mistake,
-        )
-        update_procedural_memory(
-            student_id = student_id,
-            topic      = topic,
-            strategy   = strategy,
-            success    = (outcome == "correct"),
-            attempts   = solve_attempts,
-        )
+        # ── Episodic: store for all flows, but only when topic is known ────────
+        # For direct_response flow the verifier never ran, so `outcome` is
+        # "incorrect" by the fallback — which is wrong. Use "completed" instead
+        # so research/explain sessions appear correctly in episodic history.
+        episodic_outcome = outcome if is_solver_flow else "completed"
+        if topic:
+            store_episodic_memory(
+                student_id      = student_id,
+                topic           = topic,
+                difficulty      = difficulty,
+                problem_summary = problem_text[:200],
+                final_answer    = final_answer,
+                outcome         = episodic_outcome,
+                solve_attempts  = solve_attempts,
+            )
+
+        # ── Semantic + Procedural: solver flow only ───────────────────────────
+        if topic and is_solver_flow:
+            # STRUGGLE SIGNAL: if outcome is correct but it took >1 attempt,
+            # the student genuinely struggled with this topic. We write one
+            # "incorrect" pass first to increment weak_topics, then write the
+            # final "correct" pass to increment strong_topics.
+            # This is the only reliable way to populate weak_topics because
+            # store_ltm is only ever called after a correct final outcome —
+            # mid-session incorrect attempts never reach store_ltm.
+            if outcome == "correct" and solve_attempts > 1:
+                # Each extra attempt = one struggle count on this topic
+                for _ in range(solve_attempts - 1):
+                    update_semantic_memory(
+                        student_id      = student_id,
+                        topic           = topic,
+                        outcome         = "incorrect",
+                        mistake_pattern = None,
+                    )
+
+            # Mistake pattern: use suggested_fix from verifier if available.
+            # Even when the final answer is correct, the verifier may have
+            # recorded what was wrong in a previous attempt via suggested_fix.
+            mistake = suggested_fix[:80].strip() if suggested_fix else None
+
+            # Final outcome pass — always write this
+            update_semantic_memory(
+                student_id      = student_id,
+                topic           = topic,
+                outcome         = outcome,
+                mistake_pattern = mistake,
+            )
+
+            # Procedural: only store real solving strategies, not research ones
+            if strategy:
+                update_procedural_memory(
+                    student_id = student_id,
+                    topic      = topic,
+                    strategy   = strategy,
+                    success    = (outcome == "correct"),
+                    attempts   = solve_attempts,
+                )
+
         update_thread_meta(
             thread_id       = thread_id,
             problem_summary = problem_text[:120],
             topic           = topic,
             outcome         = outcome,
         )
-        if outcome == "correct":
+        if outcome == "correct" and is_solver_flow:
             increment_problems_solved(student_id)
 
         logger.info(
-            f"[MemMgr] LTM stored | student={student_id} outcome={outcome}"
+            f"[MemMgr] LTM stored | student={student_id} "
+            f"intent={intent_type} outcome={outcome} attempts={solve_attempts}"
         )
         return {"ltm_stored": True}
 
