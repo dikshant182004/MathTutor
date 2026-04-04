@@ -1,2 +1,5 @@
 pytest    # requirement file for ci workflow caching 
 redis
+langchain-core
+pydantic
+pyyaml
