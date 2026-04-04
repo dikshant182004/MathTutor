@@ -4,19 +4,6 @@ from backend.agents.nodes.memory.memory_manager import format_ltm_for_explainer
 
 
 class ExplainerAgent(BaseAgent):
-    """
-    Produces the final student-facing explanation after the verifier confirms
-    the answer is correct.
-
-    One structured LLM call (ExplainerOutput):
-        - Structures verified working into SolutionStep objects.
-        - Builds key_formulae, key_concepts, common_mistakes, approach_summary.
-        - Personalises output using LTM context when available.
-
-    State written:
-        explainer_output      — ExplainerOutput dict
-        final_response        — rich markdown for the Streamlit chat bubble
-    """
 
     def _build_explanation_prompt(
         self,

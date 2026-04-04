@@ -20,27 +20,7 @@ def _load_output_policy() -> dict:
     return data
 
 class SafetyAgent(BaseAgent):
-    """
-    Output safety agent — fires AFTER verifier confirms the answer is correct,
-    BEFORE the explainer formats it for the student.
-
-    Checks the solver's raw working text against output_policy.yaml.
-
-    For a math tutor the violation risk is low but real edge cases exist:
-    - A crafted problem embedding harmful synthesis steps in a "calculate" framing
-    - Solver hallucinating real names / contact details in a probability example
-    - Jailbroken input that slipped past guardrail and produced off-policy output
-
-    Two-stage design (same as guardrail):
-    1. Keyword fast path — catches obvious violations without an LLM call.
-    2. LLM policy check — for anything that passes keyword check.
-
-    State written:
-        safety_passed  — bool, read by route_after_safety
-        safety_reason  — set when passed=False
-        final_response — student-facing block message when passed=False
-    """
-
+    
     def _keyword_check(self, text: str) -> tuple[bool, str]:
         """Returns (is_blocked, reason). Fast — no LLM."""
         lower = text.lower()

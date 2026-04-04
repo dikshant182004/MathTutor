@@ -12,7 +12,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New](#Features)
+- [Features](#features)
 - [Architecture](#architecture)
 - [Agent Pipeline](#agent-pipeline)
 - [Memory System](#memory-system)
@@ -44,7 +44,7 @@ For non-solve intents (`explain`, `research`, `generate`), the graph routes to `
 
 ---
 
-## What's New
+## Features
 
 Compared to the original single-agent version described in the README, the system has been substantially upgraded:
 
@@ -103,7 +103,6 @@ flowchart TD
             SOLVER["🧮 solver_agent\nTwo-call RAG pattern\nLTM-personalised system prompt"]
             TOOLS["🔧 tool_node\nRAG · Web Search · Calculator"]
             SOLVER -- tool_calls --> TOOLS
-            TOOLS -- ToolMessage --> SOLVER
         end
 
         DR["💬 direct_response_agent\nexplain / hint / formula_lookup\nresearch / generate"]
@@ -131,8 +130,9 @@ flowchart TD
         DR --> SAFETY
         SOLVE --> VERIFIER
         VERIFIER -->|correct| SAFETY
-        VERIFIER -->|incorrect, iter < 3| SOLVE
+        VERIFIER -->|incorrect, iter < 3| SOLVER
         VERIFIER -->|needs_human| HITL
+        TOOLS -- ToolMessage --> SOLVER
         SAFETY -->|solve path| EXPLAINER
         SAFETY -->|direct path| HITL
         EXPLAINER --> HITL
@@ -159,32 +159,25 @@ flowchart TD
     TOOLS -.-> CALC
     AUTH -->|stream_mode=updates| LANGGRAPH
     APP -->|st.write_stream| USER
-
-    %% Optional interactivity (works in Mermaid renderers that allow `click`)
-    click APP href "src/frontend/app.py" _blank
-    click DETECT href "src/backend/agents/nodes/input.py" _blank
-    click GUARD href "src/backend/agents/nodes/guardrail.py" _blank
-    click PARSER href "src/backend/agents/nodes/parser.py" _blank
-    click ROUTER href "src/backend/agents/nodes/router.py" _blank
-    click SOLVER href "src/backend/agents/nodes/solver.py" _blank
-    click VERIFIER href "src/backend/agents/nodes/verifier.py" _blank
-    click SAFETY href "src/backend/agents/nodes/safety.py" _blank
-    click EXPLAINER href "src/backend/agents/nodes/explainer.py" _blank
-    click HITL href "src/backend/agents/nodes/hitl.py" _blank
-    click LTM_S href "src/backend/agents/nodes/memory/memory_manager.py" _blank
 ```
 
-**Diagram links note:** GitHub’s README Mermaid renderer typically blocks `click` navigation for security reasons. If the links don’t work for you on GitHub, use these file links instead:
+**Source file reference:**
 
-- **Frontend entry**: [`src/frontend/app.py`](src/frontend/app.py)
-- **Graph**: [`src/backend/agents/graph.py`](src/backend/agents/graph.py)
-- **Input/OCR/ASR**: [`src/backend/agents/nodes/input.py`](src/backend/agents/nodes/input.py)
-- **Solver**: [`src/backend/agents/nodes/solver.py`](src/backend/agents/nodes/solver.py)
-- **Verifier**: [`src/backend/agents/nodes/verifier.py`](src/backend/agents/nodes/verifier.py)
-- **Safety**: [`src/backend/agents/nodes/safety.py`](src/backend/agents/nodes/safety.py)
-- **Memory manager**: [`src/backend/agents/nodes/memory/memory_manager.py`](src/backend/agents/nodes/memory/memory_manager.py)
-
-
+| Node | File |
+|------|------|
+| Frontend entry | [`src/frontend/app.py`](src/frontend/app.py) |
+| Graph | [`src/backend/agents/graph.py`](src/backend/agents/graph.py) |
+| Input / OCR / ASR | [`src/backend/agents/nodes/input.py`](src/backend/agents/nodes/input.py) |
+| Guardrail | [`src/backend/agents/nodes/guardrail.py`](src/backend/agents/nodes/guardrail.py) |
+| Parser | [`src/backend/agents/nodes/parser.py`](src/backend/agents/nodes/parser.py) |
+| Intent Router | [`src/backend/agents/nodes/router.py`](src/backend/agents/nodes/router.py) |
+| Solver | [`src/backend/agents/nodes/solver.py`](src/backend/agents/nodes/solver.py) |
+| Verifier | [`src/backend/agents/nodes/verifier.py`](src/backend/agents/nodes/verifier.py) |
+| Safety | [`src/backend/agents/nodes/safety.py`](src/backend/agents/nodes/safety.py) |
+| Explainer | [`src/backend/agents/nodes/explainer.py`](src/backend/agents/nodes/explainer.py) |
+| Direct Response | [`src/backend/agents/nodes/direct_response.py`](src/backend/agents/nodes/direct_response.py) |
+| HITL | [`src/backend/agents/nodes/hitl.py`](src/backend/agents/nodes/hitl.py) |
+| Memory Manager | [`src/backend/agents/nodes/memory/memory_manager.py`](src/backend/agents/nodes/memory/memory_manager.py) |
 
 ---
 
@@ -390,7 +383,54 @@ The RAG system is a Corrective Retrieval-Augmented Generation (CRAG) pipeline th
 | `calculator_tool` | Large factorials, high-precision decimals, large matrix operations ONLY       | SymPy                                 |
 
 
-The calculator does **not** have numpy. Use `math.sqrt`, `binomial(n,k)`, `factorial(n)`, `Matrix([[...]]).det()`.
+### 🌐 Tavily MCP — Real-Time Web Search
+
+Web search is handled through the **Tavily MCP server** (`mcp.tavily.com`) — a remote MCP endpoint that requires no local setup. The solver calls it via `tavily_mcp_search`, which wraps the MCP client call with `search_depth="advanced"` and returns a Tavily AI direct answer along with the top 5 ranked results (title, URL, snippet).
+
+**Multi-query strategy — up to 3 calls per turn:**
+
+The solver is instructed to decompose a research task into up to three focused, distinct queries rather than firing one broad query:
+
+- **Query 1** → core formula, theorem, or concept
+- **Query 2** → worked example or step-by-step solution
+- **Query 3** → edge case, common mistake, or real application (only if needed)
+
+This mirrors how a student would actually research a topic — first understanding the principle, then seeing it applied, then stress-testing the understanding. Each query is narrow and specific so Tavily's advanced search mode can surface high-quality results rather than generic overviews.
+
+**When the solver calls `web_search_tool`:**
+- Student asks about recent JEE Mains / Advanced questions on a topic
+- Student asks about math Olympiad problems (IMO, Putnam, USAMO, RMO)
+- Student asks for study resources, textbooks, or video explanations
+- CRAG returned empty or insufficient context
+- Any question requiring current or up-to-date information
+
+**When it should NOT be called:**
+- For computing math — use own reasoning or `calculator_tool` instead
+- For topics already covered by the student's uploaded notes — `rag_tool` takes priority
+
+---
+
+### 🐍 Symbolic Calculator — SymPy Backend
+
+The `calculator_tool` wraps **SymPy** and is intentionally scoped to a narrow set of cases where symbolic or high-precision computation adds real value over the LLM's own arithmetic. The solver handles all routine JEE-level computation itself; the calculator is only invoked when the LLM's floating-point reasoning would be unreliable or slow.
+
+**The three valid use cases:**
+
+1. **Very large factorials / combinatorics** — e.g. `binomial(50, 25)`, `factorial(100)`. These produce exact integers that are impractical to compute by hand or by LLM token prediction.
+2. **High-precision decimal results** — e.g. `N(integrate(1/sqrt(1-x**2), x), 50)` for a 50-digit result when the problem explicitly demands precision beyond standard floating point.
+3. **Large matrix operations** — determinants, inverses, and eigenvalues for matrices too large to expand symbolically in-context: e.g. `Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()`.
+
+The tool calls `sp.sympify(expression)` followed by `sp.N(expr)` and returns the result as a plain string. Errors are caught and returned with a hint to check SymPy syntax, so a malformed expression never crashes the agent turn.
+
+**Expression syntax (valid SymPy strings):**
+```
+binomial(50, 25)
+factorial(100)
+N(integrate(1/sqrt(1-x**2), x), 50)
+Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()
+```
+
+> **Note:** The calculator does **not** have NumPy available. Use SymPy-native equivalents: `binomial(n,k)`, `factorial(n)`, `Matrix([[...]]).det()`, `sqrt(x)` etc. Passing NumPy expressions will raise a calculator error.
 
 ---
 
@@ -421,7 +461,7 @@ The memory visualiser at `/pages/memory_viz.py` renders the student's complete m
 - Adjust max threads shown (1–30)
 - Decay score colour-coded: green (≥ 0.6), yellow (≥ 0.3), red (< 0.3)
 
-*[Screenshot placeholder — add your memory graph screenshot here]*
+<img width="1452" height="960" alt="memory_graph (1)" src="https://github.com/user-attachments/assets/c9c2b24f-d2e7-4fe0-81e6-a49232a98ff6" />
 
 ---
 
@@ -506,7 +546,6 @@ MathTutor/
 │   ├── frontend/
 │   │   ├── __init__.py                  AGENT_META, TOOL_META, ANSWER_NODES, HITL prefixes
 │   │   ├── app.py                       Main Streamlit app — streaming, HITL, activity panel
-│   │   ├── previous_app.py              Legacy version (kept for reference)
 │   │   ├── pages/
 │   │   │   ├── __init__.py              vis.js visual constants (colours, sizes, shapes)
 │   │   │   ├── memory_viz.py            Memory graph Streamlit page
@@ -591,8 +630,6 @@ source myenv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
-
-> **Note:** `requirements.txt` will be updated shortly. Core packages include: `streamlit`, `langgraph`, `langchain-groq`, `langchain-community`, `langchain-text-splitters`, `cohere`, `faiss-cpu`, `redis`, `redisvl`, `rank-bm25`, `sympy`, `google-cloud-vision`, `tiktoken`, `groq`, `fastmcp`, `python-dotenv`, `pydantic`, `numpy`, `pypdf`.
 
 ### 4. Start Redis Stack
 
@@ -685,13 +722,9 @@ This script:
 
 1. Loads `.env` into shell environment
 2. Waits up to 30s for Redis to respond to PING
-3. Optionally starts the Manim MCP server in the background (skipped if `SKIP_MANIM=1` or manim not installed)
-4. Starts Streamlit in the foreground
+3. Starts Streamlit in the foreground
 
 ```bash
-# Skip Manim MCP:
-SKIP_MANIM=1 ./entrypoint.sh
-
 # Custom port:
 STREAMLIT_PORT=8502 ./entrypoint.sh
 ```
@@ -715,13 +748,6 @@ streamlit run src/frontend/app.py
 
 ```bash
 PYTHONPATH=src streamlit run src/frontend/app.py
-```
-
-**Terminal 3 — Manim MCP (optional, only needed for animation feature):**
-
-```bash
-pip install manim fastmcp
-python src/backend/agents/nodes/tools/mcp/manim_mcp_server.py
 ```
 
 ### Admin utilities
@@ -761,13 +787,6 @@ pytest -m unit
 ```bash
 pytest -m integration
 ```
-
-### What is currently covered
-
-- Direct response contract (`final_response`, HITL satisfaction handoff, web tool call signals)
-- HITL clarification and satisfaction response processors (including follow-up injection)
-- User registry create/update profile flow (`get_or_create_user`, `get_user_profile`)
-- Cross-module direct-response follow-up rerun behavior
 
 ---
 
@@ -821,10 +840,6 @@ client_secret = "GOCSPX-..."
 
 **The problem:** Manim's rendering environment is very sensitive — it requires specific system dependencies (LaTeX, Cairo, FFmpeg), the rendering times were unpredictable (10–90 seconds), and the generated code frequently had syntax errors that were hard to recover from gracefully. The async bridging inside Streamlit's event loop added another layer of complexity.
 
-**Status:** The code for the MCP server and the async client still exists in `src/backend/agents/nodes/tools/mcp/`. If you want to try it:
-
-- Install: `pip install manim fastmcp nest_asyncio`
-- Run: `python src/backend/agents/nodes/tools/mcp/manim_mcp_server.py`
 - Manim docs: [docs.manim.community](https://docs.manim.community)
 - FastMCP: [github.com/jlowin/fastmcp](https://github.com/jlowin/fastmcp)
 
@@ -872,8 +887,6 @@ client_secret = "GOCSPX-..."
 **Curriculum sequencing.** Track which topics have been covered across sessions and suggest what to study next based on known weaknesses and JEE syllabus dependencies.
 
 **Step-level feedback.** Instead of just verifying the final answer, the verifier could identify exactly which step the student would likely get stuck on and generate a targeted micro-hint for that step.
-
-**Voice output.** Convert the explainer's response to speech using a TTS API (ElevenLabs, OpenAI TTS) for students who prefer audio explanations.
 
 ### Infrastructure
 

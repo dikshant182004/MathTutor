@@ -1,18 +1,8 @@
 from __future__ import annotations
 import hashlib
-import json
 import time
-from typing import Any
 
 _USER_PREFIX = "user:"
-
-def _safe_json(val: Any) -> Any:
-    try:
-        json.dumps(val)
-        return val
-    except Exception:
-        return str(val)
-
 
 def _short_id(full_id: str, length: int = 8) -> str:
     return full_id[:length] + "…"

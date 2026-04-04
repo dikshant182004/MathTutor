@@ -59,10 +59,6 @@ desktop.ini
 *.tmp
 *.temp
 
-# ── Jupyter Notebooks ─────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb
-
 # ── Coverage / Testing ────────────────────────────────────────────────────────
 .coverage
 htmlcov/

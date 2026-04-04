@@ -62,13 +62,6 @@ def _rule_based_check(text: str) -> tuple[bool, str, str]:
                 "Please do not share personal information. Rephrase your math problem.",
             )
 
-    # if len(lower.split()) < 3:
-    #     return (
-    #         True,
-    #         "off_topic",
-    #         "Please provide a complete math problem.",
-    #     )
-
     return False, "", ""
 
 

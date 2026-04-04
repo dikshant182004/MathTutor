@@ -1,11 +1,3 @@
-"""
-tests/unit/test_tavily_mcp_helpers.py
-======================================
-Unit tests for Tavily MCP client helper functions:
-  _parse_mcp_result
-  _format_search_results
-No network calls — all inputs are in-memory fake objects.
-"""
 import importlib.util
 from pathlib import Path
 

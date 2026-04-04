@@ -4,6 +4,7 @@ from backend.agents.utils.helper import _coerce_bools
 
 
 class ParserOutput(BaseModel):
+
     problem_text:         str           = Field(...,  description="Cleaned, complete problem statement ready for solving")
     topic:                Optional[str] = Field(None, description="Detected math topic (algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory)")
     variables:            List[str]     = Field(default_factory=list, description="All variables present in the problem, e.g. ['x', 'y', 'n']")
@@ -18,28 +19,7 @@ class ParserOutput(BaseModel):
 
 
 class IntentRouterOutput(BaseModel):
-    """
-    Output of the Intent Router Agent.
-
-    intent_type is NEW — enables lightweight intents (explain, hint, formula_lookup)
-    to skip the full solve→verify pipeline and go directly to explainer or a direct
-    LLM response, avoiding unnecessary HITL and verifier round-trips.
-
-    Graph routing in graph.py reads intent_type off solution_plan:
-        solve           → solver_agent  (full pipeline, existing behaviour)
-        explain         → explainer_agent directly (no solve/verify)
-        hint            → solver_agent but verifier skips to explainer on first pass
-        formula_lookup  → solver_agent lightweight; verifier always passes
-        research       → web_search_tool + direct LLM synthesis; no solve pipeline
-                       e.g. "what are recent discoveries in mathematics?"
-        generate       → web_search_tool + LLM generates content (exam Qs, examples)
-                       e.g. "give me 5 practice problems on integration for JEE"
- 
-    Graph routing (graph.py):
-      solve / hint / formula_lookup → solver_agent (full or lenient pipeline)
-      explain                       → explainer_agent directly
-      research / generate           → direct_response_node (web search + synthesis)
-    """
+    
     topic:           str           = Field(..., description="algebra | probability | calculus | linear_algebra | geometry | trigonometry | statistics | number_theory")
     difficulty:      str           = Field(..., description="easy | medium | hard")
     solver_strategy: str           = Field(..., description="Best high-level strategy to solve this problem in 1-3 sentences")
@@ -64,6 +44,7 @@ class IntentRouterOutput(BaseModel):
     
 
 class VerifierOutput(BaseModel):
+
     status: str = Field(..., description="correct | incorrect | partially_correct | needs_human")
     verdict: str = Field(..., description=(
         "One concise paragraph covering all three checks: "
@@ -101,6 +82,7 @@ class VerifierOutput(BaseModel):
 
 
 class SolutionStep(BaseModel):
+
     step_number:    Union[int, str]            = Field(..., description="Sequential step number starting from 1.")
     heading:        str            = Field(..., description="Name the technique applied — one phrase.")
     working:        str            = Field(..., description="Complete line-by-line algebraic working.")
@@ -126,6 +108,7 @@ class SolutionStep(BaseModel):
 
 
 class ExplainerOutput(BaseModel):
+
     approach_summary:  str        = Field(..., description="2-3 sentence conceptual overview of the method and why it is best.")
     steps:             List[SolutionStep] = Field(..., description="Ordered steps — no skipped algebra.")
     final_answer:      str        = Field(..., description="Boxed final answer in exact form.")
@@ -150,6 +133,7 @@ class ExplainerOutput(BaseModel):
 
 
 class GuardrailOutput(BaseModel):
+
     passed:       Union[bool, str]   = Field(..., description="True if input is safe and on-topic.")
     topic:        Optional[str]  = Field(None)
     block_reason: Optional[str]  = Field(None, description="off_topic | prompt_injection | pii | harmful_content")
@@ -162,6 +146,7 @@ class GuardrailOutput(BaseModel):
 
 
 class SafetyOutput(BaseModel):
+    
     passed:         Union[bool, str]  = Field(..., description="True if the output is safe to show the student.")
     violation_type: Optional[str] = Field(None, description="harmful_content | policy_violation | hallucinated_pii")
     reason:         Optional[str] = Field(None)

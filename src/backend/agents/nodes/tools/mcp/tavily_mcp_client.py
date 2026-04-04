@@ -95,7 +95,6 @@ async def _async_tavily_search(
 ) -> str:
     """
     Calls the Tavily MCP `tavily-search` tool.
-    Mirrors _call_manim_mcp() from manim_node.py.
     """
     try:
         from fastmcp import Client as FastMCPClient
@@ -138,15 +137,11 @@ async def _async_tavily_search(
         return ""
 
 
-# ── Thread-safe async runner (same as manim_node.py) ─────────────────────────
+# ── Thread-safe async runner  ─────────────────────────
 
 def _run_in_thread(coro, timeout: int = 30) -> str:
     """
     Run an async coroutine in a fresh event loop inside a daemon thread.
-
-    WHY: Streamlit holds its own event loop on the main thread.
-    Running in a separate thread with its own loop is the clean fix —
-    identical to the pattern in manim_node.py.
     """
     result_box: list[Any] = [None]
     exc_box:    list[Any] = [None]

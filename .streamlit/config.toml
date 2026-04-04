@@ -10,7 +10,7 @@ headless            = false
 fileWatcherType     = "none"
 # Max upload size in MB — increase if students upload large PDFs
 maxUploadSize       = 50
-# Increase timeout for slow LLM + Manim renders
+# Increase timeout for slow LLM 
 maxMessageSize      = 200
 
 [browser]

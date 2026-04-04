@@ -241,13 +241,6 @@ class SolverAgent(BaseAgent):
             rag_available = has_store(thread_id)
             is_retry = iteration > 0
 
-            # Check whether RAG was already called in this turn's history.
-            # Two cases to detect:
-            #   1. A ToolMessage with 'rag' in the name (old tool-call path, kept for safety)
-            #   2. A HumanMessage containing the RAG sentinel text — this is written into
-            #      state["messages"] when LLM Call 2 needed a tool (PATH D). Without this
-            #      check, rag_already_called would be False on the next tick and the solver
-            #      would force rag_tool again, causing an infinite loop.
             _RAG_SENTINEL = "[RAG context retrieved from student's notes]"
             rag_already_called = any(
                 (isinstance(m, ToolMessage) and "rag" in (m.name or "").lower())
@@ -272,9 +265,6 @@ class SolverAgent(BaseAgent):
                 ltm_hint      = ltm_hint,
             )
 
-            # ----------------------------------------------------------------
-            # Build the message list for LLM Call 1
-            # ----------------------------------------------------------------
             if not existing_msgs:
                 messages = [
                     system,
@@ -287,24 +277,16 @@ class SolverAgent(BaseAgent):
                     else [system] + list(existing_msgs)
                 )
 
-            # LLM Call 1 — may be a rag_tool call, a regular tool call, or a solution
             response = self._bind_tools(
                 rag_available, thread_id, rag_already_called, is_retry
             ).invoke(messages)
 
             updates: dict = {"messages": [response]}
 
-            # ----------------------------------------------------------------
-            # If LLM emitted tool calls that are NOT rag_tool, hand back to the
-            # graph's tool-executor node as normal (calculator / web_search).
-            # ----------------------------------------------------------------
             if getattr(response, "tool_calls", None):
                 tool_names = [tc["name"] for tc in response.tool_calls]
                 logger.info(f"[Solver] Tool calls: {tool_names}")
 
-                # If the only tool call is rag_tool we must handle it inline
-                # right now (LLM Call 2 follows below).  For any other tool
-                # (calculator, web_search) we return to the graph as before.
                 has_only_rag = all("rag" in n.lower() for n in tool_names)
                 if not has_only_rag:
                     return {
@@ -319,19 +301,7 @@ class SolverAgent(BaseAgent):
                 _rag_ran_inline = True  # Bug 2 fix: flag so rag_used is correct below
 
                 logger.info(f"[Solver] RAG executed inline for query: '{rag_query}'")
-                # ----------------------------------------------------------------
-                # Build the message list for LLM Call 2
-                #
-                # KEY FIX: instead of forwarding the AIMessage(tool_calls=[rag_tool])
-                # + ToolMessage(rag_result) pair — which causes Groq/OpenAI to
-                # validate that rag_tool is still in request.tools — we:
-                #   1. Strip all rag-related messages from the history.
-                #   2. Inject the RAG context as a plain HumanMessage.
-                #   3. Bind ONLY [calculator, web_search] (no rag_tool).
-                #
-                # This is the two-LLM-call pattern with a custom message format.
-                ## here we are building custom message in langraph for our rag context to avoid any tool validation in groq
-                # ----------------------------------------------------------------
+               
                 rag_context_block = (    
                     f"[RAG context retrieved from student's notes]\n{rag_result}\n"
                     f"[End of RAG context]\n\n"
@@ -339,14 +309,12 @@ class SolverAgent(BaseAgent):
                     f"plus your own knowledge."
                 )
 
-                # Start fresh from the original problem messages (no rag noise)
                 messages_for_call2 = [
                     system,
                     HumanMessage(content=f"Solve this problem:\n\n{problem_text}"),
                     HumanMessage(content=rag_context_block),
                 ]
 
-                # LLM Call 2 — solution generation, rag_tool NOT in tools list
                 response2 = self._bind_tools(
                     rag_available=False,   # forces _TOOLS_NO_RAG regardless of PDF
                     thread_id=thread_id,
@@ -354,12 +322,6 @@ class SolverAgent(BaseAgent):
                     is_retry=False,
                 ).invoke(messages_for_call2)
 
-                # If LLM Call 2 still wants to use a tool (calc / web) return to graph.
-                # Bug 3 fix: include messages_for_call2 in state["messages"] so that
-                # when the graph tool-executor runs the tool and re-invokes solver_agent,
-                # the RAG HumanMessage is present in existing_msgs. Without this,
-                # rag_already_called would be False on the next tick and the solver
-                # would try to force rag_tool again → infinite loop.
                 if getattr(response2, "tool_calls", None):
                     tool_names2 = [tc["name"] for tc in response2.tool_calls]
                     logger.info(f"[Solver] LLM Call 2 tool calls: {tool_names2}")
@@ -371,9 +333,6 @@ class SolverAgent(BaseAgent):
                 # Use response2 as our final response going forward
                 response = response2
 
-            # ----------------------------------------------------------------
-            # We have a text solution — process it
-            # ----------------------------------------------------------------
             solution_text = response.content or ""
             if not solution_text.strip():
                 logger.warning("[Solver] Empty solution text after tool loop — forcing retry signal")

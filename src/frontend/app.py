@@ -327,7 +327,6 @@ def _process_node_update(node_name: str, patch: dict, badge_ph) -> Optional[str]
             badge_ph.empty()
             return str(last.content)
 
-        # ── BUG 1 FIX: tool cards with correct icon/label/payload ─────────────
         if last and isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
             names = [tc["name"] for tc in last.tool_calls]
             for tc in last.tool_calls:
@@ -335,7 +334,7 @@ def _process_node_update(node_name: str, patch: dict, badge_ph) -> Optional[str]
                 m     = TOOL_META.get(n, {"icon": "🔧", "label": n})
                 query = (tc.get("args") or {}).get("query", "")
                 add_step(
-                    n,                    # real tool name → AGENT_META resolves icon+label
+                    n,                    
                     status  = "tool",
                     detail  = query[:80] if query else m["label"],
                     payload = {
@@ -362,13 +361,6 @@ def _handle_chunk(chunk, badge_ph) -> Optional[str]:
         return result
     return None
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  QUESTION BANNER (BUG 2 FIX)
-#  Renders into a st.empty() placeholder passed in — can be wiped cleanly.
-#  The OLD version used st.markdown() directly which burns into the DOM and
-#  cannot be removed without a full rerun.
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _render_question_banner(placeholder) -> None:
     """
@@ -530,7 +522,6 @@ with st.sidebar:
                         hitl_type       = (payload or {}).get("hitl_type", "") if is_genuinely_pending else "",
                         hitl_resuming   = False,
                         _show_reexplain_form = False,
-                        # BUG 2 FIX: clear question banner when switching threads
                         current_question      = None,
                         current_question_mode = None,
                     )
@@ -577,11 +568,6 @@ with col_chat:
             with st.chat_message(role):
                 st.markdown(c)
 
-    # ── BUG 2 FIX: question banner placeholder ────────────────────────────────
-    # Created ONCE here at a fixed position in the render tree.
-    # _render_question_banner() writes into it; placeholder.empty() wipes it.
-    # The old approach called st.markdown() directly inside the HITL block which
-    # burned the banner into the DOM with no way to remove it without a rerun.
     question_banner_ph = st.empty()
     _render_question_banner(question_banner_ph)
 
@@ -605,8 +591,6 @@ with col_chat:
             add_step("hitl_node", status="hitl", detail=question[:120])
             render_activity_panel(activity_ph)
 
-        # BUG 2 FIX: banner is now rendered above at fixed position, NOT here.
-        # For satisfaction HITL wipe the banner immediately so student sees it's done.
         if is_sat:
             question_banner_ph.empty()
 
@@ -710,17 +694,13 @@ with col_chat:
                     break
             render_activity_panel(activity_ph)
 
-            # BUG 2 FIX: clear question + banner on satisfaction
             if is_sat and human_answer.get("satisfied"):
                 st.session_state["current_question"]      = None
                 st.session_state["current_question_mode"] = None
                 question_banner_ph.empty()
 
-            # BUG 2 FIX: guard the assistant bubble — only paint if stream yields content.
-            # The old code opened st.chat_message("assistant") unconditionally which
-            # permanently painted a blank red robot icon even when the stream was empty.
             parts: list[str] = []
-            bph = st.empty()   # badge placeholder lives outside the bubble
+            bph = st.empty()  
 
             def _resume():
                 try:
@@ -821,8 +801,6 @@ with col_chat:
             st.session_state["current_node"] = None
             render_activity_panel(activity_ph)
 
-            # BUG 2 FIX: wipe old banner and reset BEFORE setting new question
-            # so there is never a frame where the old question text shows briefly
             question_banner_ph.empty()
             st.session_state["current_question"]      = None
             st.session_state["current_question_mode"] = None
@@ -905,9 +883,6 @@ with col_chat:
                     )
                     st.rerun()
                 else:
-                    # BUG 2 FIX: graph finished cleanly with no HITL pending
-                    # (e.g. research/explain intents that skip satisfaction HITL)
-                    # Clear the banner now so it doesn't persist into next question.
                     st.session_state["current_question"]      = None
                     st.session_state["current_question_mode"] = None
                     question_banner_ph.empty()
@@ -924,7 +899,6 @@ with col_chat:
                     )
                     st.rerun()
                 else:
-                    # Exception path — still clear the banner
                     st.session_state["current_question"]      = None
                     st.session_state["current_question_mode"] = None
                     question_banner_ph.empty()

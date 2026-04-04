@@ -1,11 +1,3 @@
-"""
-tests/integration/test_memory_store_after_correct_solve.py
-===========================================================
-Integration test: verifier marks correct → memory manager stores all layers.
-Simulates the end of a successful solve pipeline:
-  SolverAgent output → VerifierAgent → memory_manager_node (store mode)
-No real LLM, Redis, or embeddings.
-"""
 import importlib.util
 from pathlib import Path
 

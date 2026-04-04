@@ -1,9 +1,3 @@
-"""
-tests/integration/test_user_registry_roundtrip.py
-===================================================
-Integration tests: create a user → fetch profile → update name.
-All Redis calls go through _FakeRedis — no real Redis connection.
-"""
 import importlib.util
 from pathlib import Path
 

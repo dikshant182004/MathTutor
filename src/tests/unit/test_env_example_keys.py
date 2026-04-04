@@ -1,9 +1,3 @@
-"""
-tests/unit/test_env_example_keys.py
-=====================================
-Checks that .env.example declares every API key the app requires.
-Pure file-read test — no network, no imports from the app.
-"""
 from pathlib import Path
 
 import pytest

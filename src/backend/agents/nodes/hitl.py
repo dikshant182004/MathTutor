@@ -25,14 +25,6 @@ class HITLAgent(BaseAgent):
     │ satisfaction    │ explainer_agent (always)     │ Student thumbs up/down     │
     │                 │ after explanation delivered  │ + optional follow-up       │
     └─────────────────┴──────────────────────────────┴────────────────────────────┘
-
-    KEY DESIGN NOTE — why hitl_reason carries the full prompt:
-    interrupt() raises GraphInterrupt immediately, so any state mutation made
-    AFTER setting state["hitl_interrupt"] is never committed to the LangGraph
-    checkpoint.  To survive a page reload / thread switch, the full human-facing
-    prompt string is written into state["hitl_reason"] BEFORE interrupt() is
-    called — this key is committed by the node's return dict.  app.py reads
-    hitl_reason from the checkpoint snapshot as the fallback question string.
     """
 
     def hitl_node(self, state: AgentState) -> dict:
@@ -73,43 +65,7 @@ class HITLAgent(BaseAgent):
                     "prompt":    "Please provide the required input.",
                 }
 
-            # ── CRITICAL FIX ──────────────────────────────────────────────────
-            # interrupt() raises GraphInterrupt immediately — the node never
-            # returns normally, so state["hitl_interrupt"] set below is NOT
-            # committed to the checkpoint.
-            #
-            # Solution: write the full human-facing prompt into hitl_reason and
-            # store the full serialisable payload dict into hitl_interrupt_payload
-            # (a plain string/dict field) BEFORE the interrupt call, so they ARE
-            # saved when the node return dict is committed by the graph runtime on
-            # the NEXT successful execution that returns normally.
-            #
-            # Actually the cleanest fix: return these in the node's return dict
-            # after the interrupt resolves.  But since interrupt() raises before
-            # we can return, we instead write to the *incoming* state dict and
-            # rely on LangGraph's pre-interrupt state commit.
-            #
-            # The safest approach that works with LangGraph's checkpoint model:
-            # pass the full payload as the interrupt value itself (it IS passed
-            # to the checkpoint as the interrupt's value), so _extract_hitl_from_snap
-            # in app.py reads it from snap.tasks[].interrupts[].value — which is
-            # exactly what the primary path in that function already does.
-            # The secondary fallback path (vals.get("hitl_interrupt")) will work
-            # if we include the full prompt in hitl_reason so it gets into state
-            # via the triggering node's return dict (parser / verifier / etc).
-            #
-            # For clarification: we patch hitl_reason on the state dict here so
-            # the checkpoint carries the OCR-enriched message, not just the bare
-            # parser clarification reason.
             rich_prompt = interrupt_payload.get("prompt") or reason
-
-            # CRITICAL: interrupt() raises GraphInterrupt immediately — nothing
-            # after it executes, and state mutations made HERE are not committed.
-            # The only data that survives the interrupt is what is passed as the
-            # interrupt() argument (stored in snap.tasks[].interrupts[].value).
-            # So we ensure the full rich_prompt is inside interrupt_payload["prompt"]
-            # (already set by the _build_* helpers) and also set "hitl_reason" in
-            # the payload so _extract_hitl_from_snap's fallback path finds it.
             interrupt_payload["hitl_reason"] = rich_prompt
 
             payload(
@@ -126,8 +82,6 @@ class HITLAgent(BaseAgent):
             )
 
             try:
-                # Pass the full payload as the interrupt value — this IS saved
-                # in the checkpoint under snap.tasks[].interrupts[].value
                 human_response: dict = interrupt(interrupt_payload)
             except GraphInterrupt:
                 raise
@@ -190,12 +144,6 @@ def _build_bad_input_interrupt(state: AgentState, reason: str) -> dict:
 def _build_clarification_interrupt(state: AgentState, reason: str) -> dict:
     """
     Parser decided the problem is ambiguous or incomplete.
-
-    FIXED: The prompt now always contains the full LLM-generated clarification
-    reason (from parser_agent → parsed.clarification_reason), augmented with the
-    raw OCR-extracted text when relevant.  This prompt string is also written
-    into state["hitl_reason"] before interrupt() so it survives a checkpoint
-    round-trip and is visible on page reload / thread switch.
     """
     parsed       = state.get("parsed_data") or {}
     ocr_text     = (state.get("ocr_text") or "").strip()
@@ -208,9 +156,6 @@ def _build_clarification_interrupt(state: AgentState, reason: str) -> dict:
         or ""
     )
 
-    # Build the richest possible explanation for the student.
-    # reason is already the parser's clarification_reason — it's specific,
-    # e.g. "The variable 'n' is used but never defined."
     if ocr_text and ocr_text != problem_text:
         llm_reason = (
             f"{reason}\n\n"
@@ -359,16 +304,6 @@ def _process_verification_response(r: dict) -> dict:
 def _process_satisfaction_response(r: dict, state: AgentState) -> dict:
     """
     Stores satisfaction result; route_after_hitl sends to END or re-explains.
- 
-    FIX vs original: when student is NOT satisfied and provides a follow-up
-    question, we inject that question into user_corrected_text so the next
-    agent (explainer or direct_response) can see it. Without this injection,
-    the re-run uses the exact same prompt and gives the same answer.
- 
-    Strategy:
-    - Append follow_up to the original problem_text as context
-    - Set follow_up_injected=True so agents know to read it
-    - Clear final_response so the UI doesn't show the old response again
     """
     satisfied    = bool(r.get("satisfied", False))
     follow_up    = (r.get("follow_up") or "").strip()
@@ -392,8 +327,6 @@ def _process_satisfaction_response(r: dict, state: AgentState) -> dict:
         ).strip()
         # Use user_corrected_text as the injection vector — parser checks this first
         update["user_corrected_text"] = injected_text
-        # Also update parsed_data.problem_text so explainer/direct_response
-        # sees the follow-up without a full re-parse
         if parsed:
             updated_parsed = dict(parsed)
             updated_parsed["problem_text"] = injected_text

@@ -7,20 +7,6 @@ def render_login_page() -> None:
     """
     Renders the full-screen login page.
     Called from app.py when st.user.is_logged_in is False.
-
-    Uses Streamlit's native st.login() which handles the entire
-    Google OIDC flow — redirect, callback, cookie — automatically.
-    No manual OAuth session management needed.
-
-    The [auth] section in .streamlit/secrets.toml must be present:
-
-        [auth]
-        redirect_uri  = "http://localhost:8501/oauth2callback"
-        cookie_secret = "<random-secret>"
-
-        [auth.google]
-        client_id     = "<GOOGLE_CLIENT_ID>"
-        client_secret = "<GOOGLE_CLIENT_SECRET>"
     """
 
     # Load login-specific CSS safely

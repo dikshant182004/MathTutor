@@ -1,9 +1,3 @@
-"""
-tests/unit/test_input_and_solver_no_api.py
-===========================================
-Unit tests for input.detect_input_type and SolverAgent.
-No real LLM, no RAG, no Redis — all external paths are monkeypatched.
-"""
 import importlib.util
 from pathlib import Path
 

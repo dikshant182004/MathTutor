@@ -1,9 +1,3 @@
-"""
-tests/unit/test_db_utils_user_registry.py
-==========================================
-Unit tests for user-registry helpers (get_or_create_user, student_id_from_email).
-All Redis calls go through _FakeRedis — no real Redis connection.
-"""
 import importlib.util
 from pathlib import Path
 
