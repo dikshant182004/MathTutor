@@ -159,32 +159,25 @@ flowchart TD
     TOOLS -.-> CALC
     AUTH -->|stream_mode=updates| LANGGRAPH
     APP -->|st.write_stream| USER
-
-    %% Optional interactivity (works in Mermaid renderers that allow `click`)
-    click APP href "src/frontend/app.py" _blank
-    click DETECT href "src/backend/agents/nodes/input.py" _blank
-    click GUARD href "src/backend/agents/nodes/guardrail.py" _blank
-    click PARSER href "src/backend/agents/nodes/parser.py" _blank
-    click ROUTER href "src/backend/agents/nodes/router.py" _blank
-    click SOLVER href "src/backend/agents/nodes/solver.py" _blank
-    click VERIFIER href "src/backend/agents/nodes/verifier.py" _blank
-    click SAFETY href "src/backend/agents/nodes/safety.py" _blank
-    click EXPLAINER href "src/backend/agents/nodes/explainer.py" _blank
-    click HITL href "src/backend/agents/nodes/hitl.py" _blank
-    click LTM_S href "src/backend/agents/nodes/memory/memory_manager.py" _blank
 ```
 
-**Diagram links note:** GitHub’s README Mermaid renderer typically blocks `click` navigation for security reasons. If the links don’t work for you on GitHub, use these file links instead:
+**Source file reference:**
 
-- **Frontend entry**: [`src/frontend/app.py`](src/frontend/app.py)
-- **Graph**: [`src/backend/agents/graph.py`](src/backend/agents/graph.py)
-- **Input/OCR/ASR**: [`src/backend/agents/nodes/input.py`](src/backend/agents/nodes/input.py)
-- **Solver**: [`src/backend/agents/nodes/solver.py`](src/backend/agents/nodes/solver.py)
-- **Verifier**: [`src/backend/agents/nodes/verifier.py`](src/backend/agents/nodes/verifier.py)
-- **Safety**: [`src/backend/agents/nodes/safety.py`](src/backend/agents/nodes/safety.py)
-- **Memory manager**: [`src/backend/agents/nodes/memory/memory_manager.py`](src/backend/agents/nodes/memory/memory_manager.py)
-
-
+| Node | File |
+|------|------|
+| Frontend entry | [`src/frontend/app.py`](src/frontend/app.py) |
+| Graph | [`src/backend/agents/graph.py`](src/backend/agents/graph.py) |
+| Input / OCR / ASR | [`src/backend/agents/nodes/input.py`](src/backend/agents/nodes/input.py) |
+| Guardrail | [`src/backend/agents/nodes/guardrail.py`](src/backend/agents/nodes/guardrail.py) |
+| Parser | [`src/backend/agents/nodes/parser.py`](src/backend/agents/nodes/parser.py) |
+| Intent Router | [`src/backend/agents/nodes/router.py`](src/backend/agents/nodes/router.py) |
+| Solver | [`src/backend/agents/nodes/solver.py`](src/backend/agents/nodes/solver.py) |
+| Verifier | [`src/backend/agents/nodes/verifier.py`](src/backend/agents/nodes/verifier.py) |
+| Safety | [`src/backend/agents/nodes/safety.py`](src/backend/agents/nodes/safety.py) |
+| Explainer | [`src/backend/agents/nodes/explainer.py`](src/backend/agents/nodes/explainer.py) |
+| Direct Response | [`src/backend/agents/nodes/direct_response.py`](src/backend/agents/nodes/direct_response.py) |
+| HITL | [`src/backend/agents/nodes/hitl.py`](src/backend/agents/nodes/hitl.py) |
+| Memory Manager | [`src/backend/agents/nodes/memory/memory_manager.py`](src/backend/agents/nodes/memory/memory_manager.py) |
 
 ---
 
@@ -592,8 +585,6 @@ source myenv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Note:** `requirements.txt` will be updated shortly. Core packages include: `streamlit`, `langgraph`, `langchain-groq`, `langchain-community`, `langchain-text-splitters`, `cohere`, `faiss-cpu`, `redis`, `redisvl`, `rank-bm25`, `sympy`, `google-cloud-vision`, `tiktoken`, `groq`, `fastmcp`, `python-dotenv`, `pydantic`, `numpy`, `pypdf`.
-
 ### 4. Start Redis Stack
 
 ```bash
@@ -715,13 +706,6 @@ streamlit run src/frontend/app.py
 
 ```bash
 PYTHONPATH=src streamlit run src/frontend/app.py
-```
-
-**Terminal 3 — Manim MCP (optional, only needed for animation feature):**
-
-```bash
-pip install manim fastmcp
-python src/backend/agents/nodes/tools/mcp/manim_mcp_server.py
 ```
 
 ### Admin utilities
