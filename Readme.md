@@ -79,7 +79,7 @@ Compared to the original single-agent version described in the README, the syste
 flowchart TD
     USER(["👤 Student\n(Text / Image / Audio)"])
     APP["🖥️ Streamlit Frontend\napp.py"]
-    AUTH["🔑 Google OAuth\nst.login(\"google\")\nMap user → student_id"]
+    AUTH["🔑 Google OAuth\nst.login('google')\nMap user -> student_id"]
     USER -->|question| APP
     APP -->|login gate| AUTH
     AUTH -->|authenticated| LANGGRAPH
