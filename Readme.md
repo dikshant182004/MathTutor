@@ -788,13 +788,6 @@ pytest -m unit
 pytest -m integration
 ```
 
-### What is currently covered
-
-- Direct response contract (`final_response`, HITL satisfaction handoff, web tool call signals)
-- HITL clarification and satisfaction response processors (including follow-up injection)
-- User registry create/update profile flow (`get_or_create_user`, `get_user_profile`)
-- Cross-module direct-response follow-up rerun behavior
-
 ---
 
 ## Deployment
