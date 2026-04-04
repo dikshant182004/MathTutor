@@ -5,7 +5,7 @@
 [server]
 port                = 8501
 address             = "0.0.0.0"
-headless            = false
+headless            = true
 # Disable file watcher in production (saves CPU; restart manually to pick up changes)
 fileWatcherType     = "none"
 # Max upload size in MB — increase if students upload large PDFs
