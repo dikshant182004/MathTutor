@@ -1,4 +1,5 @@
-﻿# ── LLM Inference ─────────────────────────────────────────────────────────────
+-e .
+# ── LLM Inference ─────────────────────────────────────────────────────────────
 langchain-groq==1.1.2               # ChatGroq client for LLaMA 3.3 70B
 groq==0.37.1                        # Groq SDK (Whisper ASR via groq.audio)
 
