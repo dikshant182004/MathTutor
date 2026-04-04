@@ -3,3 +3,7 @@ redis
 langchain-core
 pydantic
 pyyaml
+python-dotenv
+numpy
+tiktoken
+redisvl

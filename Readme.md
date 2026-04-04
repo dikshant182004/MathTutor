@@ -79,7 +79,10 @@ Compared to the original single-agent version described in the README, the syste
 flowchart TD
     USER(["👤 Student\n(Text / Image / Audio)"])
     APP["🖥️ Streamlit Frontend\napp.py"]
+    AUTH["🔑 Google OAuth\nst.login(\"google\")\nMap user → student_id"]
     USER -->|question| APP
+    APP -->|login gate| AUTH
+    AUTH -->|authenticated| LANGGRAPH
 
     subgraph LANGGRAPH["🔁 LangGraph StateGraph · AgentState · RedisSaver"]
         direction TB
@@ -128,7 +131,7 @@ flowchart TD
         DR --> SAFETY
         SOLVE --> VERIFIER
         VERIFIER -->|correct| SAFETY
-        VERIFIER -->|incorrect, iter < 3| SOLVER
+        VERIFIER -->|incorrect, iter < 3| SOLVE
         VERIFIER -->|needs_human| HITL
         SAFETY -->|solve path| EXPLAINER
         SAFETY -->|direct path| HITL
@@ -154,22 +157,32 @@ flowchart TD
     TOOLS -.-> RAG
     TOOLS -.-> WEB
     TOOLS -.-> CALC
-    APP -->|stream_mode=updates| LANGGRAPH
+    AUTH -->|stream_mode=updates| LANGGRAPH
     APP -->|st.write_stream| USER
 
     %% Optional interactivity (works in Mermaid renderers that allow `click`)
-    click APP "src/frontend/app.py" "Open Streamlit app"
-    click DETECT "src/backend/agents/nodes/input.py" "Open input node"
-    click GUARD "src/backend/agents/nodes/guardrail.py" "Open guardrail"
-    click PARSER "src/backend/agents/nodes/parser.py" "Open parser"
-    click ROUTER "src/backend/agents/nodes/router.py" "Open intent router"
-    click SOLVER "src/backend/agents/nodes/solver.py" "Open solver"
-    click VERIFIER "src/backend/agents/nodes/verifier.py" "Open verifier"
-    click SAFETY "src/backend/agents/nodes/safety.py" "Open safety"
-    click EXPLAINER "src/backend/agents/nodes/explainer.py" "Open explainer"
-    click HITL "src/backend/agents/nodes/hitl.py" "Open HITL"
-    click LTM_S "src/backend/agents/nodes/memory/memory_manager.py" "Open memory manager"
+    click APP href "src/frontend/app.py" _blank
+    click DETECT href "src/backend/agents/nodes/input.py" _blank
+    click GUARD href "src/backend/agents/nodes/guardrail.py" _blank
+    click PARSER href "src/backend/agents/nodes/parser.py" _blank
+    click ROUTER href "src/backend/agents/nodes/router.py" _blank
+    click SOLVER href "src/backend/agents/nodes/solver.py" _blank
+    click VERIFIER href "src/backend/agents/nodes/verifier.py" _blank
+    click SAFETY href "src/backend/agents/nodes/safety.py" _blank
+    click EXPLAINER href "src/backend/agents/nodes/explainer.py" _blank
+    click HITL href "src/backend/agents/nodes/hitl.py" _blank
+    click LTM_S href "src/backend/agents/nodes/memory/memory_manager.py" _blank
 ```
+
+**Diagram links note:** GitHub’s README Mermaid renderer typically blocks `click` navigation for security reasons. If the links don’t work for you on GitHub, use these file links instead:
+
+- **Frontend entry**: [`src/frontend/app.py`](src/frontend/app.py)
+- **Graph**: [`src/backend/agents/graph.py`](src/backend/agents/graph.py)
+- **Input/OCR/ASR**: [`src/backend/agents/nodes/input.py`](src/backend/agents/nodes/input.py)
+- **Solver**: [`src/backend/agents/nodes/solver.py`](src/backend/agents/nodes/solver.py)
+- **Verifier**: [`src/backend/agents/nodes/verifier.py`](src/backend/agents/nodes/verifier.py)
+- **Safety**: [`src/backend/agents/nodes/safety.py`](src/backend/agents/nodes/safety.py)
+- **Memory manager**: [`src/backend/agents/nodes/memory/memory_manager.py`](src/backend/agents/nodes/memory/memory_manager.py)
 
 
 
