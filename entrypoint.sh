@@ -5,16 +5,11 @@
 #  What this script does (in order):
 #    1. Loads .env into the shell environment
 #    2. Waits until Redis is reachable (up to 30 s)
-#    3. Starts the Manim MCP server in the background (optional, skipped if
-#       SKIP_MANIM=1 is set or the venv doesn't have manim installed)
-#    4. Starts the Streamlit app in the foreground
+#    3. Starts the Streamlit app in the foreground
 #
 #  Usage:
 #    chmod +x entrypoint.sh
 #    ./entrypoint.sh
-#
-#  Skip Manim:
-#    SKIP_MANIM=1 ./entrypoint.sh
 #
 #  Custom port:
 #    STREAMLIT_PORT=8502 ./entrypoint.sh
@@ -49,27 +44,38 @@ echo -e "${NC}"
 
 # ── Step 1: load .env ─────────────────────────────────────────────────────────
 ENV_FILE="${ENV_FILE:-.env}"
+
 if [ -f "$ENV_FILE" ]; then
     log "Loading environment from $ENV_FILE"
-    # Export every non-comment, non-blank line
-    set -o allexport
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +o allexport
-    ok "Environment loaded"
+
+    # Export each KEY=value line safely
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+        # Export the variable
+        if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            key="${line%%=*}"
+            value="${line#*=}"
+            export "$key=$value"
+            # Show masked value for logging
+            if [ ${#value} -gt 12 ]; then
+                masked="${value:0:6}...${value: -4}"
+            else
+                masked="$value"
+            fi
+            log "  Set: $key=${masked}"
+        fi
+    done < "$ENV_FILE"
+
+    ok "Environment variables loaded"
 else
-    warn ".env not found at $ENV_FILE — relying on existing environment variables"
+    warn ".env file not found at $ENV_FILE"
 fi
 
 # ── Step 2: verify required variables ─────────────────────────────────────────
 REQUIRED_VARS=(
-    GROQ_API_KEY
-    COHERE_API_KEY
-    TAVILY_API_KEY
     REDIS_URL
-    GOOGLE_CLIENT_ID
-    GOOGLE_CLIENT_SECRET
-    OAUTH_REDIRECT_URI
 )
 
 MISSING=0
@@ -91,11 +97,15 @@ if [ -z "${GOOGLE_CREDENTIALS_JSON:-}" ] && [ -z "${GOOGLE_APPLICATION_CREDENTIA
     warn "Image (OCR) input will not work."
 fi
 
+# ── Optional: run tests only and exit ─────────────────────────────────────────
+if [ "${RUN_TESTS:-0}" = "1" ]; then
+    log "RUN_TESTS=1 detected — running pytest and exiting"
+    exec pytest
+fi
+
 # ── Step 3: wait for Redis ────────────────────────────────────────────────────
 log "Waiting for Redis at ${REDIS_URL} ..."
 
-# Extract host:port from REDIS_URL for redis-cli
-# Handles: redis://:pass@host:port  and  rediss://user:pass@host:port
 REDIS_HOST=$(echo "$REDIS_URL" | sed -E 's|rediss?://[^@]*@([^:]+):.*|\1|')
 REDIS_PORT=$(echo "$REDIS_URL" | sed -E 's|rediss?://[^@]*@[^:]+:([0-9]+).*|\1|')
 REDIS_PASS=$(echo "$REDIS_URL" | sed -E 's|rediss?://[^:]*:([^@]*)@.*|\1|')
@@ -117,62 +127,40 @@ done
 echo ""
 ok "Redis is up (${REDIS_HOST}:${REDIS_PORT})"
 
-# ── Step 4: create required directories ──────────────────────────────────────
-mkdir -p uploads manim_outputs logs
-ok "Directories ready (uploads/, manim_outputs/, logs/)"
+# ── Step 3.5: Check RedisInsight UI (Optional & Non-blocking) ─────────────────
+log "Checking RedisInsight UI (optional)..."
 
-# ── Step 5: start Manim MCP server (background) ───────────────────────────────
-MANIM_PID=""
+INSIGHT_AVAILABLE=false
 
-if [ "${SKIP_MANIM:-0}" = "1" ]; then
-    warn "SKIP_MANIM=1 — skipping Manim MCP server"
+# Check both common ports
+if curl -s -f http://localhost:5540 >/dev/null 2>&1; then
+    INSIGHT_AVAILABLE=true
+    ok "RedisInsight UI detected on port 5540 (recommended)"
+elif curl -s -f http://localhost:8001 >/dev/null 2>&1; then
+    INSIGHT_AVAILABLE=true
+    ok "RedisInsight UI detected on port 8001 (built-in)"
 else
-    MANIM_SCRIPT="src/backend/agents/nodes/tools/mcp/manim_mcp_server.py"
-
-    if [ ! -f "$MANIM_SCRIPT" ]; then
-        warn "Manim MCP script not found at $MANIM_SCRIPT — skipping"
-    elif ! python -c "import manim" 2>/dev/null; then
-        warn "manim not installed in current Python env — skipping Manim MCP"
-        warn "Install with: pip install manim fastmcp"
-    elif ! python -c "import fastmcp" 2>/dev/null; then
-        warn "fastmcp not installed — skipping Manim MCP"
-        warn "Install with: pip install fastmcp"
-    else
-        MANIM_PORT="${MANIM_SERVER_PORT:-8765}"
-        log "Starting Manim MCP server on port $MANIM_PORT ..."
-        MANIM_OUTPUT_DIR="${MANIM_OUTPUT_DIR:-./manim_outputs}" \
-        MANIM_SERVER_PORT="$MANIM_PORT" \
-        MANIM_MCP_SERVER_URL="${MANIM_MCP_SERVER_URL:-http://localhost:${MANIM_PORT}/mcp}" \
-            python "$MANIM_SCRIPT" >> logs/manim_mcp.log 2>&1 &
-        MANIM_PID=$!
-
-        # Give it 3 seconds to start
-        sleep 3
-        if kill -0 "$MANIM_PID" 2>/dev/null; then
-            ok "Manim MCP server started (PID $MANIM_PID, port $MANIM_PORT)"
-            ok "Logs: logs/manim_mcp.log"
-        else
-            warn "Manim MCP server exited immediately — check logs/manim_mcp.log"
-            MANIM_PID=""
-        fi
-    fi
+    warn "RedisInsight UI is not running (this is optional)"
+    echo -e "${YELLOW}   Tip: Start it with → docker compose up -d redisinsight${NC}"
 fi
 
-# ── Step 6: trap for clean shutdown ───────────────────────────────────────────
+if [ "$INSIGHT_AVAILABLE" = true ]; then
+    echo -e "${GREEN}   → Open RedisInsight at: http://localhost:5540${NC}"
+fi
+
+# ── Step 4: create required directories ──────────────────────────────────────
+mkdir -p uploads logs
+ok "Directories ready (uploads/, logs/)"
+
+# ── Step 5: trap for clean shutdown ───────────────────────────────────────────
 cleanup() {
     echo ""
     log "Shutting down..."
-    if [ -n "$MANIM_PID" ] && kill -0 "$MANIM_PID" 2>/dev/null; then
-        log "Stopping Manim MCP server (PID $MANIM_PID)..."
-        kill "$MANIM_PID"
-        wait "$MANIM_PID" 2>/dev/null || true
-        ok "Manim MCP server stopped"
-    fi
     ok "Goodbye."
 }
 trap cleanup EXIT INT TERM
 
-# ── Step 7: start Streamlit ───────────────────────────────────────────────────
+# ── Step 6: start Streamlit ───────────────────────────────────────────────────
 STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
 APP_PATH="${APP_PATH:-src/frontend/app.py}"
 
@@ -188,13 +176,14 @@ if [ ! -f "$SECRETS_FILE" ]; then
     warn "Continuing anyway — st.secrets will fall back to environment variables."
 fi
 
+export PYTHONPATH="$(pwd):$(pwd)/src:${PYTHONPATH:-}"
+
 log "Starting Streamlit on http://localhost:${STREAMLIT_PORT} ..."
+
 echo ""
-echo -e "${BOLD}  App URL:  ${GREEN}http://localhost:${STREAMLIT_PORT}${NC}"
-if [ -n "$MANIM_PID" ]; then
-    echo -e "${BOLD}  Manim MCP: ${GREEN}http://localhost:${MANIM_SERVER_PORT:-8765}/mcp${NC}"
-fi
-echo -e "${BOLD}  Redis UI:  ${GREEN}http://localhost:8001${NC}  (if RedisInsight is running)"
+echo -e "${BOLD}  App URL:           ${GREEN}http://localhost:${STREAMLIT_PORT}${NC}"
+echo -e "${BOLD}  Redis server:      ${GREEN}${REDIS_URL}${NC}"
+echo -e "${BOLD}  RedisInsight UI:   ${GREEN}http://localhost:5540${NC} (if running)"
 echo ""
 
 exec streamlit run "$APP_PATH" \

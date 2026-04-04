@@ -4,41 +4,30 @@ version: "3.9"
 #  JEE Math Tutor — Docker Compose
 #
 #  Services:
-#    redis       — Redis Stack (Redis + RedisJSON + RediSearch) for STM + LTM
-#    app         — Streamlit frontend + backend (optional, see note below)
+#    redis          → Redis Stack (Redis + RedisJSON + RediSearch) for memory
+#    redisinsight   → Full RedisInsight GUI (commented out by default)
 #
-#  Start everything:      docker compose up -d
-#  Start only Redis:      docker compose up -d redis
-#  View logs:             docker compose logs -f
-#  Stop everything:       docker compose down
+#  Quick Start:
+#    docker compose up -d redis                    # Redis only
+#    docker compose up -d redis redisinsight       # Redis + RedisInsight UI
 #
-#  NOTE: The Streamlit app service is commented out by default.
-#  Run it locally with: bash entrypoint.sh
-#  Uncomment the `app` service only if you want to containerise the whole stack.
+#  Access:
+#    Redis server      : redis://default:jee_secret@localhost:6379
+#    RedisInsight UI   : http://localhost:5540    (when service is enabled)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
 
   # ── Redis Stack ──────────────────────────────────────────────────────────────
-  # redis-stack bundles:
-  #   • Redis 7          — core key-value store (STM via RedisSaver checkpointer)
-  #   • RedisJSON        — JSON.SET / JSON.GET used by all LTM operations
-  #   • RediSearch       — vector index used by RedisVL episodic memory search
-  #
-  # RedisInsight UI is available at http://localhost:8001 (no auth by default).
-  # Connect it to redis://default:jee_secret@redis:6379 inside the UI.
-  # ─────────────────────────────────────────────────────────────────────────────
   redis:
     image: redis/redis-stack:latest
     container_name: jee_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"     # Redis
-      - "8001:8001"     # RedisInsight UI
+      - "6379:6379"     # Redis server
     volumes:
       - redis_data:/data
     environment:
-      # RedisInsight does not need a password to connect internally
       - REDIS_ARGS=--requirepass jee_secret
     command: >
       redis-stack-server
@@ -57,6 +46,41 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # ── RedisInsight UI (Recommended full-featured GUI) ──────────────────────────
+  # Uncomment the entire block below if you want to run RedisInsight as a service.
+  # Access it at: http://localhost:5540
+  #
+  # redisinsight:
+  #   image: redis/redisinsight:latest
+  #   container_name: jee_redisinsight
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5540:5540"                  # RedisInsight web UI
+  #   environment:
+  #     - RI_REDIS_HOST=redis
+  #     - RI_REDIS_PORT=6379
+  #     - RI_REDIS_PASSWORD=jee_secret
+  #     - RI_REDIS_USER=default
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+
+  # ── Streamlit App (Optional) ─────────────────────────────────────────────────
+  # Recommended to run locally with ./entrypoint.sh instead of Docker.
+  # app:
+  #   build: .
+  #   container_name: jee_math_tutor
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8501:8501"
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - .:/app
+  #   environment:
+  #     - PYTHONPATH=/app:/app/src
 
 volumes:
   redis_data:
