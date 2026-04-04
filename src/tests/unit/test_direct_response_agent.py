@@ -1,9 +1,3 @@
-"""
-tests/unit/test_direct_response_agent.py
-=========================================
-Unit tests for DirectResponseAgent.
-No real LLM is called — all LLM interactions use _FakeLLM.
-"""
 import importlib.util
 from pathlib import Path
 
@@ -114,7 +108,6 @@ def test_research_emits_web_tool_signal(monkeypatch):
     assert out["direct_response_tool_calls"], "Expected at least one tool call for research intent"
     tool = out["direct_response_tool_calls"][0]
     assert tool["name"] == "web_search_tool"
-    # Query must contain meaningful content from the problem (not exact match — reformulation allowed)
     assert len(tool["args"]["query"]) > 0
 
 

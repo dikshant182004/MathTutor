@@ -81,16 +81,6 @@ def _route_after_parser(state: AgentState) -> str:
 def _route_after_intent_router(state: AgentState) -> str:
     """
     intent_router -> [solver_agent | direct_response_node | hitl_node]
-
-    ROUTING LOGIC:
-      solve / hint / formula_lookup → solver_agent  (existing solve pipeline)
-      explain                       → direct_response_node (no solver needed)
-      research / generate           → direct_response_node (web search + synthesis)
-
-    CHANGE FROM ORIGINAL:
-      Previously "explain" routed to explainer_agent which requires solver_output.
-      Now ALL non-solve intents go to direct_response_node which is self-contained.
-      The explainer_agent is still used after solver/verifier for "solve" intent.
     """
     plan        = state.get("solution_plan") or {}
     intent_type = plan.get("intent_type", "solve")
@@ -99,9 +89,6 @@ def _route_after_intent_router(state: AgentState) -> str:
     if intent_type in ("explain", "research", "generate"):
         logger.info(f"[Router] intent={intent_type} — routing to direct_response_node")
         return "direct_response_node"
-
-    # hint and formula_lookup still go through solver (lightweight pass)
-    # solve goes through full solver pipeline
     logger.info(f"[Router] intent={intent_type} — routing to solver_agent")
     return "solver_agent"
 
@@ -127,7 +114,6 @@ def _route_after_verifier(state: AgentState) -> str:
     plan     = state.get("solution_plan") or {}
     intent   = plan.get("intent_type", "solve")
 
-    # Lightweight intents: partial result is good enough → skip to safety
     if intent in ("hint", "formula_lookup") and status in ("correct", "partially_correct"):
         return "safety_agent"
 

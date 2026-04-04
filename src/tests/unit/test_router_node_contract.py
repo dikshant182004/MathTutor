@@ -1,9 +1,3 @@
-"""
-tests/unit/test_router_node_contract.py
-========================================
-Unit tests for IntentRouterAgent.
-No real LLM — structured output is provided by _FakeStructuredLLM.
-"""
 import importlib.util
 from pathlib import Path
 

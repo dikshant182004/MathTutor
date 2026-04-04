@@ -1,15 +1,3 @@
-"""
-Redis infrastructure layer for the JEE tutor.
-
-Contains:
-  1. Singleton client/tokenizer getters
-  2. Redis key-naming helpers (all keys defined in ONE place)
-  3. User registry   (get_or_create_user, get_user_profile, increment_problems_solved)
-  4. Thread registry (create_thread, update_thread_meta, get_thread_history)
-  5. STM summary persistence helpers (save/load the rolling message summary)
-  6. Cohere embedding helper ( uses existing Cohere API key)
-"""
-
 from __future__ import annotations
 
 import hashlib

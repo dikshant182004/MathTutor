@@ -13,7 +13,6 @@ from backend.exceptions import Agent_Exception
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
-
 load_dotenv()
 
 def _coerce_bools(data: dict, bool_fields: set = None) -> dict:

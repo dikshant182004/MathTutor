@@ -1,11 +1,3 @@
-"""
-tests/integration/test_router_to_direct_response_pipeline.py
-=============================================================
-Integration test: router output feeds into DirectResponseAgent.
-Verifies that the solution_plan produced by the router is consumed
-correctly and produces a well-formed final_response.
-No real LLM — both agents are given fake LLMs.
-"""
 import importlib.util
 from pathlib import Path
 

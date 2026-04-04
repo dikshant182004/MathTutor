@@ -12,7 +12,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New](#Features)
+- [Features](#features)
 - [Architecture](#architecture)
 - [Agent Pipeline](#agent-pipeline)
 - [Memory System](#memory-system)
@@ -44,7 +44,7 @@ For non-solve intents (`explain`, `research`, `generate`), the graph routes to `
 
 ---
 
-## What's New
+## Features
 
 Compared to the original single-agent version described in the README, the system has been substantially upgraded:
 
@@ -103,7 +103,6 @@ flowchart TD
             SOLVER["🧮 solver_agent\nTwo-call RAG pattern\nLTM-personalised system prompt"]
             TOOLS["🔧 tool_node\nRAG · Web Search · Calculator"]
             SOLVER -- tool_calls --> TOOLS
-            TOOLS -- ToolMessage --> SOLVER
         end
 
         DR["💬 direct_response_agent\nexplain / hint / formula_lookup\nresearch / generate"]
@@ -131,8 +130,9 @@ flowchart TD
         DR --> SAFETY
         SOLVE --> VERIFIER
         VERIFIER -->|correct| SAFETY
-        VERIFIER -->|incorrect, iter < 3| SOLVE
+        VERIFIER -->|incorrect, iter < 3| SOLVER
         VERIFIER -->|needs_human| HITL
+        TOOLS -- ToolMessage --> SOLVER
         SAFETY -->|solve path| EXPLAINER
         SAFETY -->|direct path| HITL
         EXPLAINER --> HITL
@@ -383,7 +383,54 @@ The RAG system is a Corrective Retrieval-Augmented Generation (CRAG) pipeline th
 | `calculator_tool` | Large factorials, high-precision decimals, large matrix operations ONLY       | SymPy                                 |
 
 
-The calculator does **not** have numpy. Use `math.sqrt`, `binomial(n,k)`, `factorial(n)`, `Matrix([[...]]).det()`.
+### 🌐 Tavily MCP — Real-Time Web Search
+
+Web search is handled through the **Tavily MCP server** (`mcp.tavily.com`) — a remote MCP endpoint that requires no local setup. The solver calls it via `tavily_mcp_search`, which wraps the MCP client call with `search_depth="advanced"` and returns a Tavily AI direct answer along with the top 5 ranked results (title, URL, snippet).
+
+**Multi-query strategy — up to 3 calls per turn:**
+
+The solver is instructed to decompose a research task into up to three focused, distinct queries rather than firing one broad query:
+
+- **Query 1** → core formula, theorem, or concept
+- **Query 2** → worked example or step-by-step solution
+- **Query 3** → edge case, common mistake, or real application (only if needed)
+
+This mirrors how a student would actually research a topic — first understanding the principle, then seeing it applied, then stress-testing the understanding. Each query is narrow and specific so Tavily's advanced search mode can surface high-quality results rather than generic overviews.
+
+**When the solver calls `web_search_tool`:**
+- Student asks about recent JEE Mains / Advanced questions on a topic
+- Student asks about math Olympiad problems (IMO, Putnam, USAMO, RMO)
+- Student asks for study resources, textbooks, or video explanations
+- CRAG returned empty or insufficient context
+- Any question requiring current or up-to-date information
+
+**When it should NOT be called:**
+- For computing math — use own reasoning or `calculator_tool` instead
+- For topics already covered by the student's uploaded notes — `rag_tool` takes priority
+
+---
+
+### 🐍 Symbolic Calculator — SymPy Backend
+
+The `calculator_tool` wraps **SymPy** and is intentionally scoped to a narrow set of cases where symbolic or high-precision computation adds real value over the LLM's own arithmetic. The solver handles all routine JEE-level computation itself; the calculator is only invoked when the LLM's floating-point reasoning would be unreliable or slow.
+
+**The three valid use cases:**
+
+1. **Very large factorials / combinatorics** — e.g. `binomial(50, 25)`, `factorial(100)`. These produce exact integers that are impractical to compute by hand or by LLM token prediction.
+2. **High-precision decimal results** — e.g. `N(integrate(1/sqrt(1-x**2), x), 50)` for a 50-digit result when the problem explicitly demands precision beyond standard floating point.
+3. **Large matrix operations** — determinants, inverses, and eigenvalues for matrices too large to expand symbolically in-context: e.g. `Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()`.
+
+The tool calls `sp.sympify(expression)` followed by `sp.N(expr)` and returns the result as a plain string. Errors are caught and returned with a hint to check SymPy syntax, so a malformed expression never crashes the agent turn.
+
+**Expression syntax (valid SymPy strings):**
+```
+binomial(50, 25)
+factorial(100)
+N(integrate(1/sqrt(1-x**2), x), 50)
+Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()
+```
+
+> **Note:** The calculator does **not** have NumPy available. Use SymPy-native equivalents: `binomial(n,k)`, `factorial(n)`, `Matrix([[...]]).det()`, `sqrt(x)` etc. Passing NumPy expressions will raise a calculator error.
 
 ---
 

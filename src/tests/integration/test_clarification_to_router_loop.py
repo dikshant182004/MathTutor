@@ -1,11 +1,3 @@
-"""
-tests/integration/test_clarification_to_router_loop.py
-=======================================================
-Integration test: HITL clarification response → corrected text → router re-route.
-Verifies that _process_clarification_response produces a user_corrected_text
-that can be fed back into the router for a fresh classification.
-No real LLM.
-"""
 import importlib.util
 from pathlib import Path
 

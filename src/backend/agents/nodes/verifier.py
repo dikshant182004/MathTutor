@@ -12,7 +12,6 @@ class VerifierAgent(BaseAgent):
             solution     = solver_out.get("solution", "")
             final_answer = solver_out.get("final_answer", "")
 
-            # Add this right after reading solver_out, before building the prompt:
             if not solution.strip():
                 logger.warning("[Verifier] Empty solution received — routing back to solver")
                 return {

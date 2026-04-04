@@ -1,11 +1,3 @@
-"""
-tests/unit/test_hitl_processors.py
-====================================
-Unit tests for the private HITL processor helpers:
-  _process_clarification_response
-  _process_satisfaction_response
-No LLM or network calls.
-"""
 import importlib.util
 from pathlib import Path
 

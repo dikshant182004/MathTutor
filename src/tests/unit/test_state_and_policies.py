@@ -1,13 +1,3 @@
-"""
-tests/unit/test_state_and_policies.py
-======================================
-Unit tests for:
-  • state.make_initial_state
-  • guardrail._rule_based_check
-  • safety.SafetyAgent._keyword_check  + LLM path
-  • verifier.VerifierAgent (empty, correct, retry gate)
-No real LLM or Redis calls.
-"""
 import importlib.util
 from pathlib import Path
 
@@ -29,10 +19,6 @@ safety_mod    = _load(SRC / "backend" / "agents" / "nodes" / "safety.py",   "saf
 verifier_mod  = _load(SRC / "backend" / "agents" / "nodes" / "verifier.py", "verifier_module")
 
 artifacts_mod = _load(SRC / "backend" / "agents" / "utils" / "artifacts.py", "artifacts_module")
-
-# The production nodes reference SafetyOutput/VerifierOutput by name.
-# When the nodes are loaded via importlib in these tests, those names may not
-# be present in the module namespace depending on import ordering.
 safety_mod.SafetyOutput = getattr(safety_mod, "SafetyOutput", artifacts_mod.SafetyOutput)
 verifier_mod.VerifierOutput = getattr(verifier_mod, "VerifierOutput", artifacts_mod.VerifierOutput)
 

@@ -1,10 +1,3 @@
-"""
-tests/integration/test_direct_response_followup_flow.py
-=========================================================
-Integration test: dissatisfied follow-up → next DirectResponseAgent call
-incorporates the follow-up question into its prompt.
-No real LLM — _RecordingLLM records what messages were sent.
-"""
 import importlib.util
 from pathlib import Path
 

@@ -1,9 +1,3 @@
-"""
-tests/unit/test_db_utils_threads_and_stm.py
-============================================
-Unit tests for thread management and short-term memory helpers in db_utils.
-All Redis calls are intercepted by _FakeRedis — no real Redis connection.
-"""
 import importlib.util
 from pathlib import Path
 
