@@ -461,7 +461,7 @@ The memory visualiser at `/pages/memory_viz.py` renders the student's complete m
 - Adjust max threads shown (1–30)
 - Decay score colour-coded: green (≥ 0.6), yellow (≥ 0.3), red (< 0.3)
 
-*[Screenshot placeholder — add your memory graph screenshot here]*
+<img width="1452" height="960" alt="memory_graph (1)" src="https://github.com/user-attachments/assets/c9c2b24f-d2e7-4fe0-81e6-a49232a98ff6" />
 
 ---
 
@@ -546,7 +546,6 @@ MathTutor/
 │   ├── frontend/
 │   │   ├── __init__.py                  AGENT_META, TOOL_META, ANSWER_NODES, HITL prefixes
 │   │   ├── app.py                       Main Streamlit app — streaming, HITL, activity panel
-│   │   ├── previous_app.py              Legacy version (kept for reference)
 │   │   ├── pages/
 │   │   │   ├── __init__.py              vis.js visual constants (colours, sizes, shapes)
 │   │   │   ├── memory_viz.py            Memory graph Streamlit page
@@ -723,13 +722,9 @@ This script:
 
 1. Loads `.env` into shell environment
 2. Waits up to 30s for Redis to respond to PING
-3. Optionally starts the Manim MCP server in the background (skipped if `SKIP_MANIM=1` or manim not installed)
-4. Starts Streamlit in the foreground
+3. Starts Streamlit in the foreground
 
 ```bash
-# Skip Manim MCP:
-SKIP_MANIM=1 ./entrypoint.sh
-
 # Custom port:
 STREAMLIT_PORT=8502 ./entrypoint.sh
 ```
@@ -852,10 +847,6 @@ client_secret = "GOCSPX-..."
 
 **The problem:** Manim's rendering environment is very sensitive — it requires specific system dependencies (LaTeX, Cairo, FFmpeg), the rendering times were unpredictable (10–90 seconds), and the generated code frequently had syntax errors that were hard to recover from gracefully. The async bridging inside Streamlit's event loop added another layer of complexity.
 
-**Status:** The code for the MCP server and the async client still exists in `src/backend/agents/nodes/tools/mcp/`. If you want to try it:
-
-- Install: `pip install manim fastmcp nest_asyncio`
-- Run: `python src/backend/agents/nodes/tools/mcp/manim_mcp_server.py`
 - Manim docs: [docs.manim.community](https://docs.manim.community)
 - FastMCP: [github.com/jlowin/fastmcp](https://github.com/jlowin/fastmcp)
 
@@ -903,8 +894,6 @@ client_secret = "GOCSPX-..."
 **Curriculum sequencing.** Track which topics have been covered across sessions and suggest what to study next based on known weaknesses and JEE syllabus dependencies.
 
 **Step-level feedback.** Instead of just verifying the final answer, the verifier could identify exactly which step the student would likely get stuck on and generate a targeted micro-hint for that step.
-
-**Voice output.** Convert the explainer's response to speech using a TTS API (ElevenLabs, OpenAI TTS) for students who prefer audio explanations.
 
 ### Infrastructure
 
