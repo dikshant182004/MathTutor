@@ -386,6 +386,8 @@ def retrieve_ltm(student_id: str, problem_text: str, topic: str) -> dict:
             ],
             num_results      = TOP_K_EPISODES,
             filter_expression= f"@student_id:{{{student_id}}}",
+            if topic : 
+                filter_expression += f" @topic:{{{topic}}}"
         )
         index = SearchIndex.from_dict(EPISODIC_INDEX_SCHEMA)
         index.connect(redis_url=REDIS_URL)
@@ -399,7 +401,7 @@ def retrieve_ltm(student_id: str, problem_text: str, topic: str) -> dict:
 
         result["similar_episodes"] = [
             {
-                f: ep.get(f)
+                f: ep.get(f) or ep.get(f"$.{f}") or "—"
                 for f in [
                     "topic", "difficulty", "problem_summary",
                     "final_answer", "outcome", "solve_attempts",
