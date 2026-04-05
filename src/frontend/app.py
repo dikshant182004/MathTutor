@@ -461,6 +461,7 @@ with st.sidebar:
                     st.success(f"✅ **{s['filename']}** — {s['pages']} pages · {s['chunks']} chunks")
                 except Exception as e:
                     st.error(f"❌ {e}")
+    st.session_state.setdefault("pdf_ingested", False)
     if st.session_state["pdf_ingested"]:
         info = get_store_info(st.session_state["thread_id"])
         if info:
