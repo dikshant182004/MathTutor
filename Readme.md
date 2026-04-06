@@ -1,24 +1,24 @@
-# 🧮 JEE Math Tutor Agent
+# 🧮 JEE Math Tutor Agent — Multi-Agent AI Tutor with LangGraph & Long-Term Memory
 
-> An AI-powered mathematics tutor for JEE preparation, built on a multi-agent LangGraph pipeline with persistent long-term memory, hybrid C-RAG, real-time web search using tavily mcp, and a Neo4j-style interactive memory visualiser.
+> Multi-agent AI math tutor built with LangGraph — CRAG retrieval, episodic & semantic long-term memory, Tavily MCP web search, Google OAuth, and Neo4j-style memory graph. Powered by LLaMA 3.3 70B on Groq.
 
 ---
 
-**🔗 Live Demo:** *[Add your deployed URL here]*  
-**📸 Screenshot / Demo GIF:** *[Add image here]*
+**📹 Demo Video:** *[Add your YouTube/Loom URL here]*
+**📝 Deep Dive Blog Post (Medium):** *https://medium.com/@dikshant182004/mathtutor-deep-dive-cf5327141a90*
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [What Is This? — Multi-Agent JEE Math Tutor](#what-is-this--multi-agent-jee-math-tutor)
 - [Features](#features)
-- [Architecture](#architecture)
+- [Architecture — 14-Node LangGraph Multi-Agent Pipeline](#architecture--14-node-langgraph-multi-agent-pipeline)
 - [Agent Pipeline](#agent-pipeline)
-- [Memory System](#memory-system)
-- [RAG — Hybrid CRAG](#rag--hybrid-crag)
-- [Tools](#tools)
-- [Memory Visualiser](#memory-visualiser)
+- [Memory System — Episodic, Semantic & Procedural LTM with Redis](#memory-system--episodic-semantic--procedural-ltm-with-redis)
+- [Hybrid CRAG Retrieval — BM25 + Cohere Dense + Reciprocal Rank Fusion](#hybrid-crag-retrieval--bm25--cohere-dense--reciprocal-rank-fusion)
+- [Agent Tools — Tavily MCP Web Search, SymPy Calculator, FAISS RAG](#agent-tools--tavily-mcp-web-search-sympy-calculator-faiss-rag)
+- [Interactive Memory Graph Visualiser — Neo4j-style vis.js](#interactive-memory-graph-visualiser--neo4j-style-visjs)
 - [What We Store in Redis](#what-we-store-in-redis)
 - [Project Structure](#project-structure)
 - [Setup & Installation](#setup--installation)
@@ -32,9 +32,9 @@
 
 ---
 
-## Overview
+## What Is This? — Multi-Agent JEE Math Tutor
 
-JEE Math Tutor is a full-stack AI tutoring system that goes well beyond a simple chat interface. It accepts text, image (OCR), or audio (ASR) input, routes the student's intent intelligently, solves problems step-by-step using a ReAct tool loop, verifies its own answers with a dedicated critic agent, and generates rich personalised explanations. 
+JEE Math Tutor is a full-stack AI tutoring system that goes well beyond a simple chat interface. It accepts text, image (OCR), or audio (ASR) input, routes the student's intent intelligently, solves problems step-by-step using a ReAct tool loop, verifies its own answers with a dedicated critic agent, and generates rich personalised explanations.
 
 The system remembers students across sessions — tracking which topics they struggle with, which solving strategies work for them, and what mistakes they commonly make — and uses that memory to personalise every response.
 
@@ -61,7 +61,7 @@ Compared to the original single-agent version described in the README, the syste
 
 ---
 
-## Architecture
+## Architecture — 14-Node LangGraph Multi-Agent Pipeline
 
 ```mermaid
 %%{init: {
@@ -257,7 +257,7 @@ Called only when `student_satisfied=True`. Writes to three memory stores with a 
 
 ---
 
-## Memory System
+## Memory System — Episodic, Semantic & Procedural LTM with Redis
 
 The memory system has three layers, each serving a different purpose.
 
@@ -265,8 +265,8 @@ The memory system has three layers, each serving a different purpose.
 
 **What:** The live conversation state for one problem-solving session.  
 **Where:** Redis via LangGraph's `RedisSaver` checkpointer. Every node writes its output to a checkpoint automatically.  
-**Key pattern:** `checkpoint:<thread_id>:`*  
-**TTL:** 2 hours (matches `STM_SUMMARY_TTL`)  
+**Key pattern:** `checkpoint:<thread_id>:*`
+**TTL:** 2 hours (matches `STM_SUMMARY_TTL`)
 **Trimming:** When the message list exceeds 8,000 tokens (tiktoken gpt-4o encoding), older messages are summarised by a separate LLM call and replaced with a single `AIMessage` containing the rolling summary. The last 6 messages are always kept verbatim. The summary is also persisted to Redis at `stm:summary:<thread_id>` so it survives restarts within the TTL window.
 
 ### Long-Term Memory (LTM)
@@ -275,10 +275,10 @@ LTM spans sessions and is written at the end of each solved problem when the stu
 
 #### Episodic Memory
 
-**What:** One record per solved problem — a "memory of what happened."  
-**Where:** Redis JSON + RedisVL HNSW vector index  
-**Key pattern:** `episodic:<student_id>:<episode_id>`  
-**TTL:** 90 days  
+**What:** One record per solved problem — a "memory of what happened."
+**Where:** Redis JSON + RedisVL HNSW vector index
+**Key pattern:** `episodic:<student_id>:<episode_id>`
+**TTL:** 90 days
 **What's stored per episode:**
 
 
@@ -304,10 +304,10 @@ LTM spans sessions and is written at the end of each solved problem when the stu
 
 #### Semantic Memory
 
-**What:** The student's topic-level strength/weakness profile.  
-**Where:** Redis JSON  
-**Key pattern:** `semantic:<student_id>`  
-**TTL:** None (permanent)  
+**What:** The student's topic-level strength/weakness profile.
+**Where:** Redis JSON
+**Key pattern:** `semantic:<student_id>`
+**TTL:** None (permanent)
 **What's stored:**
 
 
@@ -322,10 +322,10 @@ LTM spans sessions and is written at the end of each solved problem when the stu
 
 #### Procedural Memory
 
-**What:** Which solving strategies work for this student on which topics.  
-**Where:** Redis JSON  
-**Key pattern:** `procedural:<student_id>`  
-**TTL:** None (permanent)  
+**What:** Which solving strategies work for this student on which topics.
+**Where:** Redis JSON
+**Key pattern:** `procedural:<student_id>`
+**TTL:** None (permanent)
 **What's stored:**
 
 ```json
@@ -350,7 +350,7 @@ LTM spans sessions and is written at the end of each solved problem when the stu
 
 ---
 
-## RAG — Hybrid CRAG
+## Hybrid CRAG Retrieval — BM25 + Cohere Dense + Reciprocal Rank Fusion
 
 The RAG system is a Corrective Retrieval-Augmented Generation (CRAG) pipeline that searches the student's uploaded PDF notes.
 
@@ -373,8 +373,7 @@ The RAG system is a Corrective Retrieval-Augmented Generation (CRAG) pipeline th
 
 ---
 
-## Tools
-
+## Agent Tools — Tavily MCP Web Search, SymPy Calculator, FAISS RAG
 
 | Tool              | When to use                                                                   | Backend                               |
 | ----------------- | ----------------------------------------------------------------------------- | ------------------------------------- |
@@ -434,7 +433,7 @@ Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()
 
 ---
 
-## Memory Visualiser
+## Interactive Memory Graph Visualiser — Neo4j-style vis.js
 
 The memory visualiser at `/pages/memory_viz.py` renders the student's complete memory graph as an interactive Neo4j-style network using vis.js.
 
@@ -605,7 +604,7 @@ MathTutor/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/MathTutor.git
+git clone https://github.com/dikshant182004/MathTutor.git
 cd MathTutor
 ```
 
@@ -860,8 +859,8 @@ client_secret = "GOCSPX-..."
 
 - **In-memory RAG index lost on restart.** The FAISS index is stored in process memory (`_STORES` dict). Re-upload your PDF after restarting the Streamlit server. A persistent option would require storing chunk embeddings in Redis or a vector database.
 - **Groq rate limits.** `llama-3.3-70b-versatile` has token-per-minute limits, especially on the free tier. The two-API-key architecture helps, but heavy multi-tool turns (RAG + web search + long solution) can still hit limits. The solver catches rate limit errors and routes to HITL.
-- `**weak_topics` requires retry sessions to populate.** Since `store_ltm` is only reached after a correct final outcome, the system uses a "struggle signal" heuristic (writing `solve_attempts - 1` incorrect passes) — but this requires the solver to actually retry. First-attempt-correct sessions never contribute to `weak_topics`.
-- `**mistake_patterns` requires verifier feedback.** The verifier's `suggested_fix` is only populated when the solver got something wrong. Students who get everything right on the first try will always have empty `mistake_patterns`.
+- **`weak_topics` requires retry sessions to populate.** Since `store_ltm` is only reached after a correct final outcome, the system uses a "struggle signal" heuristic (writing `solve_attempts - 1` incorrect passes) — but this requires the solver to actually retry. First-attempt-correct sessions never contribute to `weak_topics`.
+- **`mistake_patterns` requires verifier feedback.** The verifier's `suggested_fix` is only populated when the solver got something wrong. Students who get everything right on the first try will always have empty `mistake_patterns`.
 - **No multi-student isolation for FAISS.** The in-memory store is keyed by `thread_id`, not `student_id`, so a student's PDF index is lost when they start a new thread. This is intentional (each problem session gets a fresh context) but means students re-upload PDFs frequently.
 - **Streamlit reruns on every interaction.** Streamlit's execution model reruns the entire script on any widget interaction. The activity panel and HITL state management are carefully designed around this, but complex HITL resumption flows can occasionally require a manual `st.rerun()`.
 - **No concurrent multi-user scaling.** The current setup runs one Streamlit process. For multi-user production use, you would need multiple workers behind a load balancer, with Redis as the shared state layer (which it already is for LTM and STM).
