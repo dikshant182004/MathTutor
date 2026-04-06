@@ -5,6 +5,7 @@
 ---
 
 **📹 Demo Video:** *[Add your YouTube/Loom URL here]*
+
 **📝 Deep Dive Blog Post (Medium):** *https://medium.com/@dikshant182004/mathtutor-deep-dive-cf5327141a90*
 
 ---
