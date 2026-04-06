@@ -4,7 +4,7 @@
 
 ---
 
-**📹 Demo Video:** *[Add your YouTube/Loom URL here]*
+**📹 Demo Video:** *https://www.loom.com/share/721d0bdb7c66442ca68a41b5b351dd10*
 
 **📝 Deep Dive Blog Post (Medium):** *https://medium.com/@dikshant182004/mathtutor-deep-dive-cf5327141a90*
 
