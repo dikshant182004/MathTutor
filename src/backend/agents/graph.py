@@ -21,6 +21,7 @@ from backend.agents.utils.helper import _log_payload as payload
 from backend.agents.nodes.memory.memory_manager import memory_manager_node
 from backend.agents.utils.db_utils import build_stm_checkpointer
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
+from backend.v2.graph_policy import execution_plan_node
 
 SOLVER_TOOLS = [rag_tool, calculator_tool, web_search_tool]
 
@@ -76,6 +77,11 @@ def _route_after_guardrail(state: AgentState) -> str:
 def _route_after_parser(state: AgentState) -> str:
     """parser_agent -> [hitl | retrieve_ltm]"""
     return "hitl_node" if state.get("hitl_required") else "retrieve_ltm"
+
+
+def _route_after_execution_plan(state: AgentState) -> str:
+    plan = state.get("execution_plan") or {}
+    return "retrieve_ltm" if plan.get("use_rag") else "intent_router"
 
 
 def _route_after_intent_router(state: AgentState) -> str:
@@ -342,6 +348,7 @@ class MathTutorWorkflow(
         graph.add_node("ocr_node",              _ocr_node_with_confidence_gate)
         graph.add_node("asr_node",              _asr_node_with_confidence_gate)
         graph.add_node("guardrail_agent",       self.guardrail_agent)
+        graph.add_node("execution_plan",       execution_plan_node)
         graph.add_node("retrieve_ltm",          _retrieve_ltm_node)
         graph.add_node("parser_agent",          self.parser_agent)
         graph.add_node("intent_router",         self.intent_router_agent)
@@ -387,7 +394,13 @@ class MathTutorWorkflow(
         graph.add_conditional_edges(
             "parser_agent",
             _route_after_parser,
-            {"hitl_node": "hitl_node", "retrieve_ltm": "retrieve_ltm"},
+            {"hitl_node": "hitl_node", "retrieve_ltm": "execution_plan"},
+        )
+
+        graph.add_conditional_edges(
+            "execution_plan",
+            _route_after_execution_plan,
+            {"retrieve_ltm": "retrieve_ltm", "intent_router": "intent_router"},
         )
 
         # retrieve_ltm -> intent_router
