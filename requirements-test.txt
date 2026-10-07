@@ -7,3 +7,6 @@ python-dotenv
 numpy
 tiktoken
 redisvl
+langchain-openai==1.4.3
+langchain-anthropic==1.7.5
+langchain-groq==1.1.2
