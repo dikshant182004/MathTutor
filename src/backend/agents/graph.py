@@ -22,6 +22,7 @@ from backend.agents.nodes.memory.memory_manager import memory_manager_node
 from backend.agents.utils.db_utils import build_stm_checkpointer
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
 from backend.v2.graph_policy import execution_plan_node
+from backend.v2.student_memory import student_memory
 
 SOLVER_TOOLS = [rag_tool, calculator_tool, web_search_tool]
 
@@ -80,8 +81,7 @@ def _route_after_parser(state: AgentState) -> str:
 
 
 def _route_after_execution_plan(state: AgentState) -> str:
-    plan = state.get("execution_plan") or {}
-    return "retrieve_ltm" if plan.get("use_rag") else "intent_router"
+    return "retrieve_ltm"
 
 
 def _route_after_intent_router(state: AgentState) -> str:
