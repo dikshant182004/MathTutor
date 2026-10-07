@@ -334,15 +334,18 @@ def web_search_tool(query: str) -> str:
 
     logger.info(f"[TavilyMCP] web_search_tool | query='{query[:80]}'")
 
-    result = tavily_mcp_search(
-        query          = query,
-        search_depth   = "advanced",
-        topic          = "general",
-        max_results    = 5,
-    )
-
-    logger.info(f"[TavilyMCP] web_search_tool done | {len(result)} chars returned")
-    return result
+    try:
+        result = tavily_mcp_search(
+            query=query,
+            search_depth="advanced",
+            topic="general",
+            max_results=5,
+        )
+        logger.info(f"[TavilyMCP] web_search_tool done | {len(result)} chars returned")
+        return result
+    except Exception as exc:
+        logger.warning(f"[TavilyMCP] graceful failure: {exc}")
+        return "Web search is temporarily unavailable. Continue using the student's context and mathematical reasoning."
 
 
 # ══════════════════════════════════════════════════════════════════════════════
