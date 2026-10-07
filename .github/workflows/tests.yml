@@ -2,15 +2,14 @@ name: Tests
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "V2"]
   pull_request:
-    branches: ["master"]
+    branches: ["master", "V2"]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,7 +21,7 @@ jobs:
           cache-dependency-glob: "requirements-test.txt"
 
       - name: Setup Python
-        run: uv python install 3.11
+        run: uv python install 3.13
 
       - name: Create virtual environment
         run: uv venv .venv
@@ -30,5 +29,8 @@ jobs:
       - name: Install test dependencies
         run: uv pip install -r requirements-test.txt --python .venv/bin/python
 
-      - name: Run Tests (pytest)
+      - name: Compile V2 Python modules
+        run: .venv/bin/python -m compileall -q src/backend/v2 evals
+
+      - name: Run tests
         run: .venv/bin/pytest
