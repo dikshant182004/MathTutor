@@ -13,7 +13,7 @@ from backend.v2.routing import classify_problem
 from backend.v2.socratic import next_socratic_step
 from backend.v2.student_memory import student_memory
 from backend.v2.document_store import document_store
-from backend.v2.observability import new_trace, trace_store
+from backend.v2.observability import active_trace, new_trace, trace_store
 from backend.v2.practice import generate_problem, generate_session
 
 
@@ -123,10 +123,11 @@ def solve(request: SolveRequest) -> SolveResponse:
             thread_id=thread_id,
             raw_text=request.problem,
         )
-        result = chatbot.invoke(
-            state,
-            config={"configurable": {"thread_id": thread_id}},
-        )
+        with active_trace(metrics):
+            result = chatbot.invoke(
+                state,
+                config={"configurable": {"thread_id": thread_id}},
+            )
         trace = metrics.finish("ok")
         trace_store.append({
             **trace,
