@@ -18,3 +18,10 @@ def test_model_roles_are_independent():
 
     assert config.model_for("fast") == "fast-test"
     assert config.model_for("reasoning") == "reasoning-test"
+
+
+def test_supported_provider_configs():
+    for provider in ("groq", "openrouter", "openai", "anthropic", "ollama", "custom"):
+        config = ModelConfig(provider=provider, fast_model="fast", reasoning_model="deep")
+        assert config.model_for("fast") == "fast"
+        assert config.model_for("reasoning") == "deep"
