@@ -1,0 +1,4 @@
+{"problem":"Solve 2x+3=7","attempt":"","skill":"linear equations","hint_level":0,"expected_kind":"diagnose"}
+{"problem":"Solve 2x+3=7","attempt":"I would subtract 3 first","skill":"linear equations","hint_level":0,"expected_kind":"prompt"}
+{"problem":"Solve 2x+3=7","attempt":"I am stuck","skill":"linear equations","hint_level":1,"expected_kind":"prompt"}
+{"problem":"Solve 2x+3=7","attempt":"I am stuck","skill":"linear equations","hint_level":2,"expected_kind":"hint"}

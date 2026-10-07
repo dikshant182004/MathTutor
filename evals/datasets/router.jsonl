@@ -1,0 +1,4 @@
+{"problem":"What is the formula for the derivative of sin(x)?","tier":"direct","use_rag":false}
+{"problem":"Solve x^2 - 5x + 6 = 0","tier":"standard","use_rag":false}
+{"problem":"Prove that the sum of the first n odd numbers is n^2","tier":"deep","use_rag":false}
+{"problem":"Explain this chapter using my notes","tier":"standard","use_rag":true}
