@@ -59,16 +59,26 @@ def deterministic_math_checks(problem: str, solution: str, final_answer: str = "
             "inconclusive", 0.2, (), ("Final answer is not safely parseable as a symbolic expression.",)
         )
 
-    equality = re.search(r"([A-Za-z][A-Za-z0-9_]*)\s*=\s*([^,;\n]+)", problem)
+    # Detect a simple equation anywhere in the problem and compare the
+    # submitted scalar answer with its solved roots. This avoids treating
+    # "x + 1 = 2" as if the RHS itself were the answer.
+    equality = re.search(r"([^\n,;]{1,120})\s*=\s*([^\n,;]{1,120})", problem)
     if equality:
-        lhs, rhs = equality.group(1), equality.group(2).strip()
         try:
-            rhs_expr = _parse_expression(rhs)
-            candidate = sp.solve(sp.Eq(sp.Symbol(lhs), rhs_expr), sp.Symbol(lhs))
-            if candidate and any(sp.simplify(c - expr) == 0 for c in candidate):
-                checks.append("Final answer is symbolically consistent with the detected equation.")
-            else:
-                failures.append("Final answer conflicts with the detected symbolic equation.")
+            lhs_text, rhs_text = equality.group(1).strip(), equality.group(2).strip()
+            symbols = sorted(
+                set(re.findall(r"\b[a-zA-Z]\b", lhs_text + " " + rhs_text))
+            )
+            if len(symbols) == 1:
+                symbol = sp.Symbol(symbols[0])
+                roots = sp.solve(
+                    sp.Eq(_parse_expression(lhs_text), _parse_expression(rhs_text)),
+                    symbol,
+                )
+                if roots and any(sp.simplify(root - expr) == 0 for root in roots):
+                    checks.append("Final answer satisfies the detected equation.")
+                elif roots:
+                    failures.append("Final answer does not satisfy the detected equation.")
         except Exception:
             pass
 
