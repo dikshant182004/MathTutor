@@ -33,3 +33,16 @@ def test_next_problem_reinforces_prerequisite(tmp_path):
     result=store.next_problem("s")
     assert result["skill"] in {"algebra","functions"}
     assert result["target_skill"]=="calculus"
+
+
+def test_retention_decay_is_bounded(tmp_path):
+    store = StudentMemoryStore(str(tmp_path / "memory.json"))
+    state = store.record_attempt("s", "algebra", correct=True)
+    assert 0.0 <= store._effective_mastery(state.__dict__) <= 1.0
+
+
+def test_mistake_pattern_aggregation(tmp_path):
+    store = StudentMemoryStore(str(tmp_path / "memory.json"))
+    store.record_attempt("s", "algebra", correct=False, error="sign error")
+    store.record_attempt("s", "algebra", correct=False, error="sign error")
+    assert store.mistakes("s", 1)[0]["count"] == 2
