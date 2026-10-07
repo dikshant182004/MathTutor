@@ -117,8 +117,8 @@ async def ingest_document_pdf(
         raise HTTPException(status_code=400, detail="Unable to parse the PDF.") from exc
 
 @app.get("/v2/documents/{student_id}")
-def list_documents(student_id:
-    validate_student_id(student_id) str) -> dict:
+def list_documents(student_id: str) -> dict:
+    validate_student_id(student_id)
     return {"items": document_store.list_documents(student_id)}
 
 class MemoryWriteRequest(BaseModel):
@@ -128,8 +128,8 @@ class MemoryWriteRequest(BaseModel):
     confidence: float = Field(default=0.7, ge=0, le=1)
 
 @app.get("/v2/students/{student_id}/memory")
-def student_memory_view(student_id:
-    validate_student_id(student_id) str) -> dict:
+def student_memory_view(student_id: str) -> dict:
+    validate_student_id(student_id)
     validate_student_id(student_id)
     return {
         "semantic": student_memory.recall(student_id, "semantic"),
@@ -138,31 +138,31 @@ def student_memory_view(student_id:
     }
 
 @app.post("/v2/students/{student_id}/memory")
-def write_student_memory(student_id:
-    validate_student_id(student_id) str, request: MemoryWriteRequest) -> dict:
+def write_student_memory(student_id: str, request: MemoryWriteRequest) -> dict:
+    validate_student_id(student_id)
     validate_student_id(student_id)
     return student_memory.remember(
         student_id, request.kind, request.key, request.value, request.confidence
     )
 
 @app.get("/v2/students/{student_id}/snapshot")
-def student_snapshot(student_id:
-    validate_student_id(student_id) str) -> dict:
+def student_snapshot(student_id: str) -> dict:
+    validate_student_id(student_id)
     return student_memory.snapshot(student_id)
 
 @app.get("/v2/students/{student_id}/graph")
-def student_graph(student_id:
-    validate_student_id(student_id) str) -> dict:
+def student_graph(student_id: str) -> dict:
+    validate_student_id(student_id)
     return student_memory.graph(student_id)
 
 @app.get("/v2/students/{student_id}/mistakes")
-def student_mistakes(student_id:
-    validate_student_id(student_id) str, limit: int = 20) -> dict:
+def student_mistakes(student_id: str, limit: int = 20) -> dict:
+    validate_student_id(student_id)
     return {"items": student_memory.mistakes(student_id, max(1, min(limit, 100)))}
 
 @app.get("/v2/students/{student_id}/practice")
-def practice(student_id:
-    validate_student_id(student_id) str, count: int = 5) -> dict:
+def practice(student_id: str, count: int = 5) -> dict:
+    validate_student_id(student_id)
     recommendation = student_memory.next_problem(student_id)
     return {
         "recommendation": recommendation,
@@ -172,8 +172,8 @@ def practice(student_id:
     }
 
 @app.get("/v2/students/{student_id}/next-problem")
-def next_problem(student_id:
-    validate_student_id(student_id) str) -> dict:
+def next_problem(student_id: str) -> dict:
+    validate_student_id(student_id)
     return student_memory.next_problem(student_id)
 
 class SocraticRequest(BaseModel):
