@@ -35,14 +35,14 @@ function Whiteboard(){
  return <div><div className="toolbar"><button onClick={()=>{const c=ref.current;c?.getContext("2d")?.clearRect(0,0,c.width,c.height)}}>Clear</button><span>Sketch equations, diagrams or working.</span></div><canvas ref={ref} width={900} height={420} className="whiteboard" onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false}} onPointerLeave={()=>{drawing.current=false}}/></div>;
 }
 
-function KnowledgeGraph({graph,onSelect}:{graph:GraphData;onSelect:(node:GraphNode)=>void}){
+function KnowledgeGraph({graph}:{graph:GraphData}){
  const nodes=Object.values(graph?.nodes||{});
  if(!nodes.length)return <div className="empty">Solve a problem to grow your knowledge graph.</div>;
  const pos=nodes.map((n,i)=>({...n,x:90+(i%4)*165,y:70+Math.floor(i/4)*105}));
  const byId=new Map(pos.map(n=>[n.id,n]));
  return <svg className="knowledge-graph" viewBox="0 0 680 320" aria-label="Student knowledge graph">
   {graph.edges.map((e,i)=>{const a=byId.get(e.source),b=byId.get(e.target);return a&&b?<line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="edge"/>:null})}
-  {pos.map(n=><g key={n.id} transform={`translate(${n.x},${n.y})`} onClick={()=>onSelect(n)} style={{cursor:"pointer"}}>
+  {pos.map(n=><g key={n.id} transform={`translate(${n.x},${n.y})`}>
    <circle r={n.type==="mistake"?24:30} className={`node node-${n.status||n.type}`}/>
    <text textAnchor="middle" y="4" className="node-label">{n.label.slice(0,14)}</text>
    {typeof n.mastery==="number"&&<text textAnchor="middle" y="47" className="node-meta">{pct(n.mastery)}%</text>}
@@ -89,7 +89,7 @@ function Home(){
  const [answer,setAnswer]=useState("");
  const [loading,setLoading]=useState(false);
  const [trace,setTrace]=useState<string[]>([]);
- const [hintLevel,setHintLevel]=useState(0);\n const [selectedNode,setSelectedNode]=useState<GraphNode|null>(null);
+ const [hintLevel,setHintLevel]=useState(0);\n
 
  async function refresh(){
   const [s,m,n]=await Promise.all([
@@ -154,7 +154,7 @@ function Home(){
 
    {tab==="Practice"&&<section className="card wide practice"><div className="card-title"><h2>Next-best practice</h2><span>Mastery-driven</span></div><div className="practice-card"><small>RECOMMENDED SKILL</small><h2>{next?.skill||"Algebra"}</h2><p>{next?.reason||"Build your first mastery signal."}</p><button className="send" onClick={()=>{setProblem(`Give me a ${next?.difficulty||"easy"} ${next?.skill||"algebra"} problem`);setTab("Workspace")}}>Generate practice →</button></div></section>}
 
-   {tab==="Knowledge Graph"&&<section className="card wide"><div className="card-title"><h2>Knowledge graph</h2><span>{Object.keys(graph.nodes||{}).length} nodes</span></div><KnowledgeGraph graph={graph}/><div className="legend"><span>mastered</span><span>developing</span><span>weak</span><span>misconception</span></div>{selectedNode&&<div className="node-detail"><strong>{selectedNode.label}</strong><span>{selectedNode.type}{typeof selectedNode.mastery==="number"?` · ${pct(selectedNode.mastery)}% mastery`:""}{selectedNode.count?` · ${selectedNode.count} occurrences`:""}</span></div>}</section>}
+   {tab==="Knowledge Graph"&&<section className="card wide"><div className="card-title"><h2>Knowledge graph</h2><span>{Object.keys(graph.nodes||{}).length} nodes</span></div><KnowledgeGraph graph={graph}/><div className="legend"><span>mastered</span><span>developing</span><span>weak</span><span>misconception</span></div></section>}
 
    {tab==="Graphing"&&<section className="card wide"><div className="card-title"><h2>Interactive graphing</h2><span>Math workspace</span></div><GraphingTool/></section>}
    {tab==="Whiteboard"&&<section className="card wide"><div className="card-title"><h2>Math whiteboard</h2><span>Sketch freely</span></div><Whiteboard/></section>}
