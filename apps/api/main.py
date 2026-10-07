@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from backend.agents.graph import chatbot
 from backend.agents.state import make_initial_state
 from backend.v2.routing import classify_problem
+from backend.v2.socratic import next_socratic_step
+from backend.v2.student_memory import student_memory
 
 
 class SolveRequest(BaseModel):
@@ -44,6 +46,39 @@ def health() -> dict:
 def plan(request: SolveRequest) -> dict:
     return classify_problem(request.problem).__dict__
 
+
+@app.get("/v2/students/{student_id}/snapshot")
+def student_snapshot(student_id: str) -> dict:
+    return student_memory.snapshot(student_id)
+
+@app.get("/v2/students/{student_id}/graph")
+def student_graph(student_id: str) -> dict:
+    return student_memory.graph(student_id)
+
+@app.get("/v2/students/{student_id}/mistakes")
+def student_mistakes(student_id: str, limit: int = 20) -> dict:
+    return {"items": student_memory.mistakes(student_id, max(1, min(limit, 100)))}
+
+@app.get("/v2/students/{student_id}/next-problem")
+def next_problem(student_id: str) -> dict:
+    return student_memory.next_problem(student_id)
+
+class SocraticRequest(BaseModel):
+    student_id: str = "local-student"
+    problem: str = Field(min_length=1, max_length=12000)
+    student_attempt: str = ""
+    skill: str = "general"
+    hint_level: int = Field(default=0, ge=0, le=3)
+
+@app.post("/v2/socratic")
+def socratic(request: SocraticRequest) -> dict:
+    step = next_socratic_step(
+        problem=request.problem,
+        student_attempt=request.student_attempt,
+        skill=request.skill,
+        hint_level=request.hint_level,
+    )
+    return step.__dict__
 
 @app.post("/v2/solve", response_model=SolveResponse)
 def solve(request: SolveRequest) -> SolveResponse:
