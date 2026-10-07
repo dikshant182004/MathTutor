@@ -1,6 +1,6 @@
 # 🧮 JEE Math Tutor Agent — Multi-Agent AI Tutor with LangGraph & Long-Term Memory
 
-> Multi-agent AI math tutor built with LangGraph — CRAG retrieval, episodic & semantic long-term memory, Tavily MCP web search, Google OAuth, and Neo4j-style memory graph. Powered by LLaMA 3.3 70B on Groq.
+> Multi-agent AI math tutor built with LangGraph — CRAG retrieval, episodic & semantic long-term memory, Tavily MCP web search, Google OAuth, and Neo4j-style memory graph. Provider/model configurable with current hosted or local LLMs.
 
 ---
 
@@ -859,7 +859,7 @@ client_secret = "GOCSPX-..."
 ## Known Limitations
 
 - **In-memory RAG index lost on restart.** The FAISS index is stored in process memory (`_STORES` dict). Re-upload your PDF after restarting the Streamlit server. A persistent option would require storing chunk embeddings in Redis or a vector database.
-- **Groq rate limits.** `llama-3.3-70b-versatile` has token-per-minute limits, especially on the free tier. The two-API-key architecture helps, but heavy multi-tool turns (RAG + web search + long solution) can still hit limits. The solver catches rate limit errors and routes to HITL.
+- **Groq rate limits.** `openai/gpt-oss-20b or openai/gpt-oss-120b` has token-per-minute limits, especially on the free tier. The two-API-key architecture helps, but heavy multi-tool turns (RAG + web search + long solution) can still hit limits. The solver catches rate limit errors and routes to HITL.
 - **`weak_topics` requires retry sessions to populate.** Since `store_ltm` is only reached after a correct final outcome, the system uses a "struggle signal" heuristic (writing `solve_attempts - 1` incorrect passes) — but this requires the solver to actually retry. First-attempt-correct sessions never contribute to `weak_topics`.
 - **`mistake_patterns` requires verifier feedback.** The verifier's `suggested_fix` is only populated when the solver got something wrong. Students who get everything right on the first try will always have empty `mistake_patterns`.
 - **No multi-student isolation for FAISS.** The in-memory store is keyed by `thread_id`, not `student_id`, so a student's PDF index is lost when they start a new thread. This is intentional (each problem session gets a fresh context) but means students re-upload PDFs frequently.
