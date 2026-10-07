@@ -34,31 +34,31 @@ def _parse_expression(value: str) -> Any:
 
 
 def deterministic_math_checks(problem: str, solution: str, final_answer: str = "") -> VerificationResult:
-    """Run cheap deterministic checks before invoking an LLM verifier.
-
-    This intentionally does not claim that a passing symbolic check proves an
-    arbitrary word problem correct. It only verifies relationships that can be
-    established safely from extracted expressions.
-    """
+    """Run cheap symbolic checks before invoking an LLM verifier."""
     checks: list[str] = []
     failures: list[str] = []
-
     answer = (final_answer or _extract_labeled_answer(solution)).strip()
+
     if not answer:
-        return VerificationResult("inconclusive", 0.0, tuple(), ("No final answer could be extracted.",))
+        return VerificationResult("inconclusive", 0.0, (), ("No final answer could be extracted.",))
+
+    if re.search(r"\b(?:zoo|nan|NaN|undefined|infinity|∞)\b", answer, re.IGNORECASE):
+        return VerificationResult(
+            "failed", 0.99, (), ("Final answer contains an undefined or non-finite value.",)
+        )
 
     try:
         expr = _parse_expression(answer)
-        if expr is sp.nan or expr.has(sp.zoo, sp.oo, sp.nan):
-            failures.append("Final answer contains an undefined or non-finite value.")
-        else:
-            checks.append("Final answer parses as a valid symbolic expression.")
+        if expr.has(sp.zoo, sp.oo, sp.nan):
+            return VerificationResult(
+                "failed", 0.99, (), ("Final answer contains an undefined or non-finite value.",)
+            )
+        checks.append("Final answer parses as a valid symbolic expression.")
     except Exception:
         return VerificationResult(
-            "inconclusive", 0.2, tuple(checks), ("Final answer is not safely parseable as a symbolic expression.",)
+            "inconclusive", 0.2, (), ("Final answer is not safely parseable as a symbolic expression.",)
         )
 
-    # Strong check for simple equality/equation answers.
     equality = re.search(r"([A-Za-z][A-Za-z0-9_]*)\s*=\s*([^,;\n]+)", problem)
     if equality:
         lhs, rhs = equality.group(1), equality.group(2).strip()
