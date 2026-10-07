@@ -169,7 +169,8 @@ class SolverAgent(BaseAgent):
         ))
 
     def _bind_tools(self, rag_available: bool, thread_id: str,
-                    rag_already_called: bool = False, is_retry: bool = False):
+                    rag_already_called: bool = False, is_retry: bool = False,
+                    allow_calculator: bool = True, allow_web: bool = True):
         """
         Tool binding per phase:
 
@@ -183,8 +184,14 @@ class SolverAgent(BaseAgent):
                                              RAG is done; LLM writes solution, optionally
                                              using calc or web if it needs to.
         """
+        if not allow_calculator and not allow_web and (is_retry or not rag_available):
+            return self.reserve_llm
+
         if is_retry or not rag_available:
-            return self.reserve_llm.bind_tools(_TOOLS_NO_RAG, tool_choice="auto")
+            tools = []
+            if allow_calculator: tools.append(calculator_tool)
+            if allow_web: tools.append(web_search_tool)
+            return self.reserve_llm.bind_tools(tools, tool_choice="auto") if tools else self.reserve_llm
 
         scoped_rag = _make_scoped_rag(thread_id)
 
@@ -289,8 +296,11 @@ class SolverAgent(BaseAgent):
                     )
                 )
 
+            plan_flags = state.get("execution_plan") or {}
             response = self._bind_tools(
-                rag_available, thread_id, rag_already_called, is_retry
+                rag_available, thread_id, rag_already_called, is_retry,
+                allow_calculator=bool(plan_flags.get("use_calculator", True)),
+                allow_web=bool(plan_flags.get("use_web", False)),
             ).invoke(messages)
 
             updates: dict = {"messages": [response]}
