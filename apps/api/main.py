@@ -14,6 +14,7 @@ from backend.v2.socratic import next_socratic_step
 from backend.v2.student_memory import student_memory
 from backend.v2.document_store import document_store
 from backend.v2.observability import new_trace, trace_store
+from backend.v2.practice import generate_problem, generate_session
 
 
 class SolveRequest(BaseModel):
@@ -80,6 +81,16 @@ def student_graph(student_id: str) -> dict:
 @app.get("/v2/students/{student_id}/mistakes")
 def student_mistakes(student_id: str, limit: int = 20) -> dict:
     return {"items": student_memory.mistakes(student_id, max(1, min(limit, 100)))}
+
+@app.get("/v2/students/{student_id}/practice")
+def practice(student_id: str, count: int = 5) -> dict:
+    recommendation = student_memory.next_problem(student_id)
+    return {
+        "recommendation": recommendation,
+        "items": generate_session(
+            recommendation["skill"], recommendation["difficulty"], count=count
+        ),
+    }
 
 @app.get("/v2/students/{student_id}/next-problem")
 def next_problem(student_id: str) -> dict:
