@@ -1,6 +1,7 @@
 from backend.agents import *
 from backend.agents.nodes import *
 from backend.v2.verification import deterministic_math_checks
+from backend.v2.student_memory import student_memory
 
 
 class VerifierAgent(BaseAgent):
@@ -36,6 +37,13 @@ class VerifierAgent(BaseAgent):
                     "suggested_fix": "Correct the final answer so it satisfies the deterministic mathematical checks.",
                     "confidence": deterministic.confidence,
                 }
+                student_memory.record_attempt(
+                    state.get("student_id") or "anonymous",
+                    (parsed.get("topic") or "general"),
+                    correct=False,
+                    difficulty=0.5,
+                    error=verdict,
+                )
                 payload(
                     state, "verifier_agent",
                     summary=f"DETERMINISTIC FAILURE | {deterministic.confidence:.0%} confidence",
@@ -81,6 +89,15 @@ Claimed final answer:
                 updates["hitl_type"] = "verification"
                 updates["hitl_reason"] = (
                     result.hitl_reason or result.verdict or "Verifier cannot determine correctness."
+                )
+
+            if result.status in ("correct", "incorrect", "partially_correct"):
+                student_memory.record_attempt(
+                    state.get("student_id") or "anonymous",
+                    (parsed.get("topic") or "general"),
+                    correct=result.status == "correct",
+                    difficulty=0.5,
+                    error=result.suggested_fix if result.status != "correct" else None,
                 )
 
             payload(
