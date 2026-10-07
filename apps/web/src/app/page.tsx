@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Skill={skill:string;mastery:number;attempts:number;correct:number;status:string};
 type GraphNode={id:string;label:string;type:string;mastery?:number;count?:number;status?:string};
@@ -9,6 +9,31 @@ type Snapshot={skills:Skill[];weakest:Skill[];events:any[];graph:GraphData};
 
 const API=process.env.NEXT_PUBLIC_API_URL||"http://localhost:8000";
 const pct=(n:number)=>Math.round(n*100);
+
+
+
+function GraphingTool(){
+ const [expr,setExpr]=useState("x²"); const [points,setPoints]=useState<number[][]>([]);
+ function plot(){
+  const fn=(x:number)=>expr==="x²"?x*x:expr==="x"?x:expr==="sin(x)"?Math.sin(x):expr==="cos(x)"?Math.cos(x):2*x+1;
+  setPoints(Array.from({length:81},(_,i)=>{const x=-4+i*.1;return [x,fn(x)]}));
+ }
+ useEffect(plot,[]);
+ const sx=(x:number)=>340+x*55, sy=(y:number)=>180-y*35;
+ return <div><div className="toolbar"><input value={expr} onChange={e=>setExpr(e.target.value)} aria-label="function"/><button onClick={plot}>Plot</button><span>Try x², x, sin(x), cos(x)</span></div>
+  <svg className="math-graph" viewBox="0 0 680 360"><line x1="0" y1="180" x2="680" y2="180" className="axis"/><line x1="340" y1="0" x2="340" y2="360" className="axis"/><polyline fill="none" points={points.map(p=>`${sx(p[0])},${sy(p[1])}`).join(" ")} className="plot-line"/></svg>
+ </div>;
+}
+
+function Whiteboard(){
+ const ref=useRef<HTMLCanvasElement>(null); const drawing=useRef(false);
+ useEffect(()=>{const canvas=ref.current;if(!canvas)return;const ctx=canvas.getContext("2d");if(!ctx)return;ctx.lineWidth=2;ctx.lineCap="round";ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.globalAlpha=.12;for(let x=20;x<canvas.width;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke()}for(let y=20;y<canvas.height;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke()}ctx.globalAlpha=1;},[]);
+ const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=ref.current;if(!c)return;const r=c.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top] as const};
+ const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{drawing.current=true;const p=point(e);if(!p)return;const ctx=ref.current?.getContext("2d");ctx?.beginPath();ctx?.moveTo(...p)};
+ const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current)return;const p=point(e);if(!p)return;const ctx=ref.current?.getContext("2d");ctx?.lineTo(...p);ctx?.stroke()};
+ return <div><div className="toolbar"><button onClick={()=>{const c=ref.current;c?.getContext("2d")?.clearRect(0,0,c.width,c.height)}}>Clear</button><span>Sketch equations, diagrams or working.</span></div><canvas ref={ref} width={900} height={420} className="whiteboard" onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false}} onPointerLeave={()=>{drawing.current=false}}/></div>;
+}
 
 function KnowledgeGraph({graph}:{graph:GraphData}){
  const nodes=Object.values(graph?.nodes||{});
@@ -25,7 +50,15 @@ function KnowledgeGraph({graph}:{graph:GraphData}){
  </svg>;
 }
 
-export default function Home(){
+export default function ExamPanel({API,studentId}:{API:string;studentId:string}){
+ const [items,setItems]=useState<any[]>([]);const [i,setI]=useState(0);const [started,setStarted]=useState(false);const [done,setDone]=useState(false);
+ async function start(){const r=await fetch(`${API}/v2/students/${studentId}/practice?count=5`);const d=await r.json();setItems(d.items||[]);setI(0);setDone(false);setStarted(true)}
+ if(!started)return <section className="card wide"><div className="exam-card"><small>EXAM MODE</small><h2>Timed adaptive practice</h2><p>Five problems selected from your current weakest skill.</p><button className="send" onClick={start}>Start exam →</button></div></section>;
+ if(done)return <section className="card wide"><div className="exam-card"><h2>Exam complete</h2><p>Submit the attempts through the normal verified learning flow to update mastery.</p><button className="send" onClick={()=>setStarted(false)}>Start another →</button></div></section>;
+ const q=items[i];return <section className="card wide"><div className="card-title"><h2>Exam {i+1}/{items.length}</h2><span>{q?.difficulty}</span></div><div className="exam-question"><h2>{q?.prompt}</h2><p>Work it out on the whiteboard, then continue.</p><button className="send" onClick={()=>i+1>=items.length?setDone(true):setI(i+1)}>{i+1>=items.length?"Finish":"Next problem →"}</button></div></section>;
+}
+
+function Home(){
  const [studentId]=useState("local-student");
  const [tab,setTab]=useState("Workspace");
  const [problem,setProblem]=useState("");
@@ -70,7 +103,7 @@ export default function Home(){
  return <main className="shell">
   <aside className="sidebar">
    <div className="brand"><span className="logo">∑</span><div><strong>MathTutor</strong><small>Adaptive Learning V2</small></div></div>
-   <nav>{["Workspace","Practice","Mastery","Mistake Lab","Knowledge Graph"].map(x=><button key={x} className={tab===x?"active":""} onClick={()=>setTab(x)}>{x}</button>)}</nav>
+   <nav>{["Workspace","Practice","Mastery","Mistake Lab","Knowledge Graph","Graphing","Whiteboard","Exam Mode"].map(x=><button key={x} className={tab===x?"active":""} onClick={()=>setTab(x)}>{x}</button>)}</nav>
    <div className="profile"><div className="avatar">D</div><div><strong>Student</strong><small>{studentId}</small></div></div>
   </aside>
   <section className="workspace">
@@ -102,6 +135,11 @@ export default function Home(){
    {tab==="Practice"&&<section className="card wide practice"><div className="card-title"><h2>Next-best practice</h2><span>Mastery-driven</span></div><div className="practice-card"><small>RECOMMENDED SKILL</small><h2>{next?.skill||"Algebra"}</h2><p>{next?.reason||"Build your first mastery signal."}</p><button className="send" onClick={()=>{setProblem(`Give me a ${next?.difficulty||"easy"} ${next?.skill||"algebra"} problem`);setTab("Workspace")}}>Generate practice →</button></div></section>}
 
    {tab==="Knowledge Graph"&&<section className="card wide"><div className="card-title"><h2>Knowledge graph</h2><span>{Object.keys(graph.nodes||{}).length} nodes</span></div><KnowledgeGraph graph={graph}/><div className="legend"><span>mastered</span><span>developing</span><span>weak</span><span>misconception</span></div></section>}
+
+   {tab==="Graphing"&&<section className="card wide"><div className="card-title"><h2>Interactive graphing</h2><span>Math workspace</span></div><GraphingTool/></section>}
+   {tab==="Whiteboard"&&<section className="card wide"><div className="card-title"><h2>Math whiteboard</h2><span>Sketch freely</span></div><Whiteboard/></section>}
+   {tab==="Exam Mode"&&<ExamPanel API={API} studentId={studentId}/>}
+
   </section>
  </main>;
 }
