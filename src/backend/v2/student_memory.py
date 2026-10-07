@@ -51,6 +51,27 @@ class StudentMemoryStore:
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
+    def remember(self, student_id: str, kind: str, key: str, value: str, confidence: float = 0.7):
+        if kind not in {"semantic", "procedural", "profile"}:
+            raise ValueError("kind must be semantic, procedural or profile")
+        payload = {"key": key[:160], "value": value[:1000], "confidence": max(0.0, min(1.0, confidence)), "updated_at": time.time()}
+        if self._redis:
+            self._redis.hset(self._key(student_id, kind), key[:160], json.dumps(payload))
+        else:
+            with self._lock:
+                data=self._load(); data.setdefault(student_id, {}).setdefault(kind, {})[key[:160]]=payload; self._save(data)
+        return payload
+
+    def recall(self, student_id: str, kind: str, limit: int = 20):
+        if kind not in {"semantic", "procedural", "profile"}:
+            raise ValueError("invalid memory kind")
+        if self._redis:
+            values=self._redis.hgetall(self._key(student_id, kind)).values()
+            items=[json.loads(v) for v in values]
+        else:
+            items=list(self._load().get(student_id, {}).get(kind, {}).values())
+        return sorted(items, key=lambda x:x.get("confidence",0), reverse=True)[:max(1,min(limit,100))]
+
     def get_skill(self, student_id: str, skill: str) -> SkillState:
         if self._redis:
             raw = self._redis.hget(self._key(student_id, "skills"), skill)
@@ -164,7 +185,11 @@ class StudentMemoryStore:
             skill["retention"] = round(self._effective_mastery(skill), 4)
             skill["effective_mastery"] = skill["retention"]
         skills.sort(key=lambda x: x["effective_mastery"])
-        return {"student_id": student_id, "skills": skills, "weakest": skills[:5], "events": events, "graph": self.graph(student_id)}
+        return {"student_id": student_id, "skills": skills, "weakest": skills[:5], "events": events,
+                "semantic_memory": self.recall(student_id, "semantic", 10),
+                "procedural_memory": self.recall(student_id, "procedural", 10),
+                "profile_memory": self.recall(student_id, "profile", 10),
+                "graph": self.graph(student_id)}
 
     def mistakes(self, student_id, limit=20):
         grouped = {}
