@@ -193,6 +193,8 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
                 {"topic": m["skill"], "pattern": m["pattern"], "count": m["count"]}
                 for m in student_memory.mistakes(student_id, 5)
             ],
+            "semantic_memory": student_memory.recall(student_id, "semantic", 5),
+            "procedural_memory": student_memory.recall(student_id, "procedural", 5),
         }
         out = {"ltm_context": student_context}
         retrieved = document_store.retrieve(student_id, problem, top_k=5) if plan.get("use_rag") else []
