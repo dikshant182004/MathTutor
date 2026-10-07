@@ -14,3 +14,5 @@
 .math-graph{width:100%;height:360px;border:1px solid var(--line,#eee);border-radius:16px;background:var(--surface,#fafafa)}.axis{stroke:currentColor;opacity:.18}.plot-line{stroke:currentColor;stroke-width:3}
 .whiteboard{width:100%;height:auto;border:1px solid var(--line,#eee);border-radius:16px;touch-action:none;background:var(--surface,#fff)}
 .exam-card{padding:34px;text-align:center;border-radius:16px;background:var(--surface,#f7f7f7)}.exam-card small{letter-spacing:.12em;opacity:.6}.exam-question{padding:30px 10px}.exam-question h2{font-size:28px}
+
+.trace-row{display:grid;grid-template-columns:70px 90px 80px 80px 100px 1fr;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line,#eee);font-size:12px}.trace-row small{opacity:.45;overflow:hidden;text-overflow:ellipsis}
