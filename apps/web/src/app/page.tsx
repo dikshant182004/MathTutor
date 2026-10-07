@@ -58,6 +58,15 @@ export default function ExamPanel({API,studentId}:{API:string;studentId:string})
  const q=items[i];return <section className="card wide"><div className="card-title"><h2>Exam {i+1}/{items.length}</h2><span>{q?.difficulty}</span></div><div className="exam-question"><h2>{q?.prompt}</h2><p>Work it out on the whiteboard, then continue.</p><button className="send" onClick={()=>i+1>=items.length?setDone(true):setI(i+1)}>{i+1>=items.length?"Finish":"Next problem →"}</button></div></section>;
 }
 
+function TelemetryPanel({API}:{API:string}){
+ const [items,setItems]=useState<any[]>([]);
+ useEffect(()=>{fetch(`${API}/v2/observability/traces?limit=20`).then(r=>r.json()).then(d=>setItems(d.items||[])).catch(()=>setItems([]))},[]);
+ return <section className="card wide"><div className="card-title"><h2>Agent telemetry</h2><button className="link" onClick={()=>fetch(`${API}/v2/observability/traces?limit=20`).then(r=>r.json()).then(d=>setItems(d.items||[]))}>Refresh</button></div>
+  {items.map((t,i)=><div className="trace-row" key={t.trace_id||i}><strong>{t.status}</strong><span>{t.latency_ms} ms</span><span>LLM {t.llm_calls}</span><span>tools {t.tool_calls}</span><span>tokens {t.input_tokens+t.output_tokens}</span><small>{t.trace_id}</small></div>)}
+  {!items.length&&<div className="empty">No completed API traces yet.</div>}
+ </section>;
+}
+
 function Home(){
  const [studentId]=useState("local-student");
  const [tab,setTab]=useState("Workspace");
@@ -103,7 +112,7 @@ function Home(){
  return <main className="shell">
   <aside className="sidebar">
    <div className="brand"><span className="logo">∑</span><div><strong>MathTutor</strong><small>Adaptive Learning V2</small></div></div>
-   <nav>{["Workspace","Practice","Mastery","Mistake Lab","Knowledge Graph","Graphing","Whiteboard","Exam Mode"].map(x=><button key={x} className={tab===x?"active":""} onClick={()=>setTab(x)}>{x}</button>)}</nav>
+   <nav>{["Workspace","Practice","Mastery","Mistake Lab","Knowledge Graph","Graphing","Whiteboard","Exam Mode","Telemetry"].map(x=><button key={x} className={tab===x?"active":""} onClick={()=>setTab(x)}>{x}</button>)}</nav>
    <div className="profile"><div className="avatar">D</div><div><strong>Student</strong><small>{studentId}</small></div></div>
   </aside>
   <section className="workspace">
@@ -139,6 +148,8 @@ function Home(){
    {tab==="Graphing"&&<section className="card wide"><div className="card-title"><h2>Interactive graphing</h2><span>Math workspace</span></div><GraphingTool/></section>}
    {tab==="Whiteboard"&&<section className="card wide"><div className="card-title"><h2>Math whiteboard</h2><span>Sketch freely</span></div><Whiteboard/></section>}
    {tab==="Exam Mode"&&<ExamPanel API={API} studentId={studentId}/>}
+
+   {tab==="Telemetry"&&<TelemetryPanel API={API}/>}
 
   </section>
  </main>;
