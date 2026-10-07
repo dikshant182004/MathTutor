@@ -1,2 +1,4 @@
 fastapi==0.142.2
 uvicorn==0.54.0
+pypdf==6.7.5
+python-multipart==0.0.32
