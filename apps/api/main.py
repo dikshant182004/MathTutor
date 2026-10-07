@@ -130,7 +130,6 @@ class MemoryWriteRequest(BaseModel):
 @app.get("/v2/students/{student_id}/memory")
 def student_memory_view(student_id: str) -> dict:
     validate_student_id(student_id)
-    validate_student_id(student_id)
     return {
         "semantic": student_memory.recall(student_id, "semantic"),
         "procedural": student_memory.recall(student_id, "procedural"),
