@@ -4,9 +4,11 @@ import os
 from io import BytesIO
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import re
 from pypdf import PdfReader
 
 from backend.agents.graph import chatbot
@@ -20,7 +22,7 @@ from backend.v2.practice import generate_problem, generate_session
 
 
 class SolveRequest(BaseModel):
-    student_id: str = "local-student"
+    student_id: str = Field(default="local-student", pattern=r"^[A-Za-z0-9._-]{1,80}$")
     thread_id: str | None = None
     problem: str = Field(min_length=1, max_length=12000)
 
@@ -33,6 +35,22 @@ class SolveResponse(BaseModel):
 
 
 app = FastAPI(title="MathTutor V2 API", version="2.0.0")
+
+_STUDENT_ID = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+def validate_student_id(student_id: str) -> str:
+    if not _STUDENT_ID.fullmatch(student_id):
+        raise HTTPException(status_code=400, detail="Invalid student_id format.")
+    return student_id
+
+@app.middleware("http")
+async def api_key_guard(request: Request, call_next):
+    expected = os.getenv("V2_API_KEY", "").strip()
+    if expected and request.url.path != "/health":
+        supplied = request.headers.get("X-V2-API-Key", "")
+        if supplied != expected:
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if x.strip()],
@@ -57,7 +75,7 @@ def plan(request: SolveRequest) -> dict:
 
 
 class DocumentTextRequest(BaseModel):
-    student_id: str = "local-student"
+    student_id: str = Field(default="local-student", pattern=r"^[A-Za-z0-9._-]{1,80}$")
     document_id: str = Field(min_length=1, max_length=120)
     source: str = Field(min_length=1, max_length=240)
     text: str = Field(min_length=1, max_length=500000)
@@ -74,6 +92,9 @@ async def ingest_document_pdf(
     document_id: str,
     file: UploadFile = File(...),
 ) -> dict:
+    validate_student_id(student_id)
+    if not _STUDENT_ID.fullmatch(document_id):
+        raise HTTPException(status_code=400, detail="Invalid document_id format.")
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=415, detail="Only PDF uploads are supported.")
     data = await file.read()
