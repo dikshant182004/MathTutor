@@ -240,6 +240,12 @@ class SolverAgent(BaseAgent):
             )
 
             ltm_hint = format_ltm_for_solver(ltm_context, topic) if ltm_context else ""
+            durable_memory = []
+            for kind in ("semantic_memory", "procedural_memory"):
+                for item in ltm_context.get(kind, [])[:5]:
+                    durable_memory.append(f"{kind}: {item.get('key')}: {item.get('value')}")
+            if durable_memory:
+                ltm_hint = (ltm_hint + "\n" + "\n".join(durable_memory)).strip()
 
             feedback = prev_verifier.get("suggested_fix") or ""
             if human_fb and not existing_msgs:
