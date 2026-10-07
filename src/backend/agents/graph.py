@@ -213,7 +213,7 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
                     "score": item["score"],
                 })
                 context_rows.append(
-                    f'[{"document_id"} | page={meta.get("page")} | score={item["score"]}]\n{item["text"]}'
+                    f'[{item["document_id"]} | page={meta.get("page")} | score={item["score"]}]\n{item["text"]}'
                 )
             out["retrieved_context"] = "\n\n---\n\n".join(context_rows)
             out["rag_citations"] = citation_rows
