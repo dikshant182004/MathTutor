@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - mathtutor_redis:/data
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:3000
+      LLM_PROVIDER: groq
+      LLM_FAST_MODEL: openai/gpt-oss-20b
+      LLM_REASONING_MODEL: openai/gpt-oss-120b
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    ports:
+      - "8000:8000"
+volumes:
+  mathtutor_redis:
