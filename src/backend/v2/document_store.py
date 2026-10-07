@@ -3,6 +3,8 @@ import json, os, re, time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import RLock
+from backend.v2.rag import reciprocal_rank_fusion, RetrievedChunk
+from rank_bm25 import BM25Okapi
 try:
     import redis
 except Exception:
@@ -63,11 +65,31 @@ class PersistentDocumentStore:
             return docs
         return [c for d in self._load().get(student_id,{}).values() for c in d]
     def retrieve(self,student_id,query,top_k=5):
-        chunks=self._all(student_id); q=set(_tokens(query)); scored=[]
+        chunks=self._all(student_id)
+        if not chunks: return []
+        tokenized=[_tokens(c["text"]) for c in chunks]
+        query_tokens=_tokens(query)
+        lexical=[]
+        overlap=[]
+        try:
+            bm25=BM25Okapi(tokenized)
+            scores=bm25.get_scores(query_tokens)
+            order=sorted(range(len(chunks)),key=lambda i:scores[i],reverse=True)
+            for i in order[:max(1,top_k*2)]:
+                lexical.append(RetrievedChunk(chunks[i]["chunk_id"],chunks[i]["document_id"],chunks[i]["text"],
+                    float(scores[i]),{"source":chunks[i]["source"],"page":chunks[i]["page"]}))
+        except Exception:
+            lexical=[]
+        q=set(query_tokens)
         for c in chunks:
-            toks=_tokens(c["text"]); overlap=sum(1 for t in toks if t in q)
-            if overlap: scored.append((overlap/(1+len(set(toks))),c))
-        scored.sort(key=lambda x:x[0],reverse=True)
-        return [{"chunk_id":c["chunk_id"],"document_id":c["document_id"],"text":c["text"],"score":round(score,6),"metadata":{"source":c["source"],"page":c["page"]}} for score,c in scored[:max(1,min(top_k,20))]]
+            toks=_tokens(c["text"]); score=sum(1 for t in toks if t in q)/(1+len(set(toks)))
+            if score:
+                overlap.append(RetrievedChunk(c["chunk_id"],c["document_id"],c["text"],float(score),
+                    {"source":c["source"],"page":c["page"]}))
+        overlap.sort(key=lambda x:x.score,reverse=True)
+        fused=reciprocal_rank_fusion([lexical,overlap],k=60) if lexical else overlap
+        return [{"chunk_id":x.chunk_id,"document_id":x.document_id,"text":x.text,
+                 "score":round(x.score,6),"metadata":x.metadata} for x in fused[:max(1,min(top_k,20))]]
+
 def _tokens(text): return re.findall(r"[a-z0-9_]+",text.lower())
 document_store=PersistentDocumentStore()
