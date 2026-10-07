@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from threading import RLock
 from typing import Iterator
+from langchain_core.callbacks import BaseCallbackHandler
 from uuid import uuid4
 
 _current_trace: ContextVar["RunMetrics|None"] = ContextVar("mathtutor_trace", default=None)
@@ -47,7 +48,7 @@ def measure_node(metrics: RunMetrics,node: str)->Iterator[None]:
     try: yield
     finally: metrics.node_ms[node]=metrics.node_ms.get(node,0.0)+(time.perf_counter()-start)*1000
 
-class TraceCallback:
+class TraceCallback(BaseCallbackHandler):
     """Small callback bridge; it records only real provider metadata."""
 
     def on_llm_start(self,*_args,**_kwargs):
