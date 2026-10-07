@@ -16,3 +16,12 @@ def test_mastery_moves_in_expected_direction(tmp_path: Path):
     after=store.get_skill("s","calculus").mastery
     store.record_attempt("s","calculus",correct=False,error="chain rule")
     assert after>before and store.get_skill("s","calculus").mastery<after
+
+
+def test_memory_namespace_isolation(tmp_path):
+    store=StudentMemoryStore(str(tmp_path/"memory.json"))
+    store.remember("a","semantic","method","factorization",0.9)
+    store.remember("b","procedural","strategy","check units",0.8)
+    assert store.recall("a","semantic")[0]["value"]=="factorization"
+    assert store.recall("a","procedural")==[]
+    assert store.recall("b","semantic")==[]
