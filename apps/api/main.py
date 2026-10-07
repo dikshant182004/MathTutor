@@ -13,6 +13,7 @@ from backend.v2.routing import classify_problem
 from backend.v2.socratic import next_socratic_step
 from backend.v2.student_memory import student_memory
 from backend.v2.document_store import document_store
+from backend.v2.observability import new_trace, trace_store
 
 
 class SolveRequest(BaseModel):
@@ -41,6 +42,10 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "mathtutor-v2"}
+
+@app.get("/v2/observability/traces")
+def traces(limit: int = 50) -> dict:
+    return {"items": trace_store.recent(limit)}
 
 
 @app.post("/v2/plan")
@@ -100,6 +105,7 @@ def socratic(request: SocraticRequest) -> dict:
 @app.post("/v2/solve", response_model=SolveResponse)
 def solve(request: SolveRequest) -> SolveResponse:
     thread_id = request.thread_id or str(uuid4())
+    metrics = new_trace()
     try:
         state = make_initial_state(
             student_id=request.student_id,
@@ -110,6 +116,13 @@ def solve(request: SolveRequest) -> SolveResponse:
             state,
             config={"configurable": {"thread_id": thread_id}},
         )
+        metrics.finish("ok")
+        trace_store.append({
+            **metrics.finish("ok"),
+            "student_id": request.student_id,
+            "thread_id": thread_id,
+            "execution_tier": (result.get("execution_plan") or {}).get("tier"),
+        })
         return SolveResponse(
             thread_id=thread_id,
             execution_plan=result.get("execution_plan"),
@@ -117,4 +130,5 @@ def solve(request: SolveRequest) -> SolveResponse:
             status="ok" if result.get("final_response") else "needs_follow_up",
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        trace_store.append({**metrics.finish("error", str(exc)), "student_id": request.student_id, "thread_id": thread_id})
+        raise HTTPException(status_code=500, detail="MathTutor request failed; inspect trace_id for diagnostics.") from exc
