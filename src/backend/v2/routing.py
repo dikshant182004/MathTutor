@@ -30,8 +30,9 @@ def classify_problem(text: str, *, has_student_notes: bool = False, explicit_web
         "integral", "differential equation", "eigenvalue", "probability distribution",
     )
     direct_markers = ("what is", "define", "formula for", "meaning of", "convert")
+    solve_markers = ("solve", "calculate", "find", "evaluate", "simplify")
     deep = any(marker in normalized for marker in complex_markers) or words > 90
-    direct = not deep and (any(normalized.startswith(m) for m in direct_markers) or words < 12)
+    direct = not deep and (any(normalized.startswith(m) for m in direct_markers) or (words < 12 and not any(normalized.startswith(m) for m in solve_markers)))
 
     if deep:
         tier = ExecutionTier.DEEP
