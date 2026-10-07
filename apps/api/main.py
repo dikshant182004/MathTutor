@@ -31,6 +31,8 @@ class SolveResponse(BaseModel):
     thread_id: str
     execution_plan: dict | None = None
     final_response: str | None = None
+    rag_citations: list[dict] = []
+    trace_id: str | None = None
     status: str
 
 
@@ -209,8 +211,11 @@ def solve(request: SolveRequest) -> SolveResponse:
             thread_id=thread_id,
             execution_plan=result.get("execution_plan"),
             final_response=result.get("final_response"),
+            rag_citations=result.get("rag_citations") or [],
+            trace_id=trace["trace_id"],
             status="ok" if result.get("final_response") else "needs_follow_up",
         )
     except Exception as exc:
-        trace_store.append({**metrics.finish("error", str(exc)), "student_id": request.student_id, "thread_id": thread_id})
-        raise HTTPException(status_code=500, detail="MathTutor request failed; inspect trace_id for diagnostics.") from exc
+        error_trace = metrics.finish("error", type(exc).__name__)
+        trace_store.append({**error_trace, "student_id": request.student_id, "thread_id": thread_id})
+        raise HTTPException(status_code=500, detail={"message": "MathTutor request failed.", "trace_id": error_trace["trace_id"]}) from exc
