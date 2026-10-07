@@ -201,13 +201,22 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         out = {"ltm_context": student_context}
         retrieved = document_store.retrieve(student_id, problem, top_k=5) if plan.get("use_rag") else []
         if retrieved:
-            citations = []
+            citation_rows = []
+            context_rows = []
             for item in retrieved:
                 meta = item["metadata"]
-                citations.append(
-                    f"[{item['document_id']} | page={meta.get('page')} | score={item['score']}]\n{item['text']}"
+                citation_rows.append({
+                    "chunk_id": item["chunk_id"],
+                    "document_id": item["document_id"],
+                    "source": meta.get("source"),
+                    "page": meta.get("page"),
+                    "score": item["score"],
+                })
+                context_rows.append(
+                    f'[{"document_id"} | page={meta.get("page")} | score={item["score"]}]\n{item["text"]}'
                 )
-            out["retrieved_context"] = "\n\n---\n\n".join(citations)
+            out["retrieved_context"] = "\n\n---\n\n".join(context_rows)
+            out["rag_citations"] = citation_rows
             out["ltm_context"]["retrieved_documents"] = [item["document_id"] for item in retrieved]
         elif plan.get("use_rag"):
             # Keep the legacy thread-local RAG as a compatibility fallback.
