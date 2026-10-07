@@ -181,7 +181,21 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         if state.get("user_corrected_text") and not state.get("raw_text"):
             state["raw_text"] = state["user_corrected_text"]
         state["ltm_mode"] = "retrieve"
-        out = memory_manager_node(state)
+        plan = state.get("execution_plan") or {}
+        student_id = state.get("student_id") or "anonymous"
+        snapshot = student_memory.snapshot(student_id)
+        weakest = snapshot.get("weakest") or []
+        student_context = {
+            "weak_topics": {x["skill"]: round(1.0 - x["mastery"], 3) for x in weakest},
+            "strong_topics": {x["skill"]: x["mastery"] for x in snapshot.get("skills", []) if x["mastery"] >= 0.8},
+            "mistake_patterns": [
+                {"topic": m["skill"], "pattern": m["pattern"], "count": m["count"]}
+                for m in student_memory.mistakes(student_id, 5)
+            ],
+        }
+        out = {"ltm_context": student_context}
+        if plan.get("use_rag"):
+            out = {**out, **memory_manager_node(state)}
 
         # ── Build payload for activity panel ──────────────────────────────
         ltm = out.get("ltm_context") or {}
