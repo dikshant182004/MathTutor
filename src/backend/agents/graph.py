@@ -184,6 +184,8 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         state["ltm_mode"] = "retrieve"
         plan = state.get("execution_plan") or {}
         student_id = state.get("student_id") or "anonymous"
+        parsed = state.get("parsed_data") or {}
+        problem = parsed.get("problem_text") or state.get("raw_text") or ""
         snapshot = student_memory.snapshot(student_id)
         weakest = snapshot.get("weakest") or []
         student_context = {
