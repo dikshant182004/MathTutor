@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, time
+import json, os, time, math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
@@ -144,6 +144,15 @@ class StudentMemoryStore:
         with self._lock:
             data = self._load(); data.setdefault(student_id, {})["graph"] = graph; self._save(data)
 
+    @staticmethod
+    def _effective_mastery(skill):
+        half_life_days = 45.0
+        if not skill.get("last_seen"):
+            return skill["mastery"]
+        age_days = max(0.0, (time.time() - skill["last_seen"]) / 86400.0)
+        retention = math.pow(0.5, age_days / half_life_days)
+        return max(0.0, min(1.0, skill["mastery"] * retention))
+
     def snapshot(self, student_id):
         if self._redis:
             skills = [json.loads(v) for v in self._redis.hgetall(self._key(student_id, "skills")).values()]
@@ -151,7 +160,10 @@ class StudentMemoryStore:
         else:
             doc = self._load().get(student_id, {})
             skills, events = list(doc.get("skills", {}).values()), list(doc.get("events", []))[:20]
-        skills.sort(key=lambda x: x["mastery"])
+        for skill in skills:
+            skill["retention"] = round(self._effective_mastery(skill), 4)
+            skill["effective_mastery"] = skill["retention"]
+        skills.sort(key=lambda x: x["effective_mastery"])
         return {"student_id": student_id, "skills": skills, "weakest": skills[:5], "events": events, "graph": self.graph(student_id)}
 
     def mistakes(self, student_id, limit=20):
