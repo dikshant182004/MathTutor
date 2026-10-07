@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+// V2 workspace will be wired to the student APIs in the next UI commit.
 const skills=[["Algebra",.78],["Calculus",.56],["Probability",.41]] as const;
 export default function Home(){
  const [problem,setProblem]=useState(""); const [mode,setMode]=useState<"socratic"|"solve">("socratic"); const [submitted,setSubmitted]=useState(false);
