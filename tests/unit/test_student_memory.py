@@ -25,3 +25,11 @@ def test_memory_namespace_isolation(tmp_path):
     assert store.recall("a","semantic")[0]["value"]=="factorization"
     assert store.recall("a","procedural")==[]
     assert store.recall("b","semantic")==[]
+
+
+def test_next_problem_reinforces_prerequisite(tmp_path):
+    store=StudentMemoryStore(str(tmp_path/"memory.json"))
+    store.record_attempt("s","calculus",correct=False,error="needs prerequisite")
+    result=store.next_problem("s")
+    assert result["skill"] in {"algebra","functions"}
+    assert result["target_skill"]=="calculus"
