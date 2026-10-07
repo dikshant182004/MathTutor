@@ -116,9 +116,9 @@ def solve(request: SolveRequest) -> SolveResponse:
             state,
             config={"configurable": {"thread_id": thread_id}},
         )
-        metrics.finish("ok")
+        trace = metrics.finish("ok")
         trace_store.append({
-            **metrics.finish("ok"),
+            **trace,
             "student_id": request.student_id,
             "thread_id": thread_id,
             "execution_tier": (result.get("execution_plan") or {}).get("tier"),
