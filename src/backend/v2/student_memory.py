@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
 from typing import Any
-from backend.v2.knowledge_graph import prerequisite_edges
+from backend.v2.knowledge_graph import PREREQUISITES, prerequisite_edges
 
 try:
     import redis
@@ -204,8 +204,19 @@ class StudentMemoryStore:
         weakest = self.snapshot(student_id)["weakest"]
         if not weakest: return {"skill": "algebra", "difficulty": "easy", "reason": "diagnostic baseline"}
         s = weakest[0]
-        return {"skill": s["skill"], "difficulty": "easy" if s["mastery"] < .4 else "medium" if s["mastery"] < .7 else "hard",
-                "reason": f"lowest current mastery ({s['mastery']:.0%})"}
+        for prerequisite in PREREQUISITES.get(s["skill"].lower(), []):
+            prereq = self.get_skill(student_id, prerequisite)
+            effective = self._effective_mastery(asdict(prereq))
+            if prereq.attempts == 0 or effective < 0.45:
+                return {
+                    "skill": prerequisite,
+                    "difficulty": "easy",
+                    "reason": f"prerequisite for {s['skill']} needs reinforcement",
+                    "target_skill": s["skill"],
+                }
+        mastery = s.get("effective_mastery", s["mastery"])
+        return {"skill": s["skill"], "difficulty": "easy" if mastery < .4 else "medium" if mastery < .7 else "hard",
+                "reason": f"lowest current mastery ({mastery:.0%})"}
 
 def _slug(value):
     return "".join(c.lower() if c.isalnum() else "-" for c in value).strip("-")[:60]
