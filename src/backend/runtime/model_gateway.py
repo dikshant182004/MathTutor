@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
 from backend.agents.utils.helper import _get_secret
+from backend.v2.observability import callback_handler
 
 ModelRole = Literal["fast", "reasoning"]
 
@@ -59,7 +60,7 @@ class ModelGateway:
             raise ValueError(f"Missing API key for {provider}")
         kwargs={"api_key":key or "none","model":self.config.model_for(role),
                 "temperature":self.config.temperature,"max_tokens":self.config.max_tokens,
-                "max_retries":self.config.max_retries}
+                "max_retries":self.config.max_retries,"callbacks":[callback_handler()]}
         if base: kwargs["base_url"]=base
         return ChatOpenAI(**kwargs)
 
@@ -70,13 +71,13 @@ class ModelGateway:
             if not key: raise ValueError("GROQ_API_KEY is not set")
             return ChatGroq(api_key=key,model_name=self.config.model_for(role),
                             temperature=self.config.temperature,max_tokens=self.config.max_tokens,
-                            max_retries=self.config.max_retries)
+                            max_retries=self.config.max_retries,callbacks=[callback_handler()])
         if p=="anthropic":
             key=self._key("anthropic")
             if not key: raise ValueError("ANTHROPIC_API_KEY is not set")
             return ChatAnthropic(model=self.config.model_for(role),api_key=key,
                                  temperature=self.config.temperature,max_tokens=self.config.max_tokens,
-                                 max_retries=self.config.max_retries)
+                                 max_retries=self.config.max_retries,callbacks=[callback_handler()])
         if p in {"openrouter","openai","ollama","custom"}:
             return self._openai_compatible(role)
         raise ValueError(f"Unsupported LLM_PROVIDER={p!r}")
