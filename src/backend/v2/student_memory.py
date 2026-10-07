@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from backend.v2.knowledge_graph import prerequisite_edges
+
 try:
     import redis
 except Exception:
@@ -121,8 +123,20 @@ class StudentMemoryStore:
     def graph(self, student_id):
         if self._redis:
             raw = self._redis.get(self._key(student_id, "graph"))
-            return json.loads(raw) if raw else {"nodes": {}, "edges": []}
-        return self._load().get(student_id, {}).get("graph", {"nodes": {}, "edges": []})
+            graph = json.loads(raw) if raw else {"nodes": {}, "edges": []}
+        else:
+            graph = self._load().get(student_id, {}).get("graph", {"nodes": {}, "edges": []})
+        for node in list(graph.get("nodes", {}).values()):
+            if node.get("type") == "skill":
+                for edge in prerequisite_edges(node["label"]):
+                    if edge["source"] not in graph["nodes"]:
+                        graph["nodes"][edge["source"]] = {
+                            "id": edge["source"], "type": "skill", "label": edge["source"].split(":",1)[1],
+                            "mastery": 0.5, "attempts": 0, "correct": 0, "status": "unseen"
+                        }
+                    if edge not in graph["edges"]:
+                        graph["edges"].append(edge)
+        return graph
 
     def _save_graph(self, student_id, graph):
         if self._redis:
