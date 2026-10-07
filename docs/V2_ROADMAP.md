@@ -89,3 +89,32 @@ V2 is merge-ready only when:
 - no deprecated production model IDs remain;
 - UI, API, agent runtime, persistence and observability are documented;
 - a clean checkout can reproduce the documented development/evaluation workflow.
+
+
+## V2 implementation status
+
+- [x] Provider/model gateway with Groq, OpenRouter, OpenAI, Anthropic, Ollama/custom OpenAI-compatible endpoints.
+- [x] Adaptive execution routing before expensive solver work.
+- [x] Deterministic mathematical verification before LLM verification.
+- [x] Redis-backed short-term LangGraph checkpoints.
+- [x] Cross-thread student memory: semantic, procedural, profile, mastery, mistakes and retention.
+- [x] Student knowledge graph with prerequisite edges.
+- [x] Persistent document ingestion, PDF extraction, BM25 + overlap retrieval, RRF and provenance.
+- [x] Solver/verifier retry loop and human escalation retained.
+- [x] Socratic policy and next-best practice generation.
+- [x] Real request traces with latency, model-call/tool-call and token telemetry hooks.
+- [x] Regression/evaluation harness plus public GSM8K/MATH evaluation sources.
+- [x] New React/Next.js workspace with mastery, practice, mistake lab, graphing and whiteboard surfaces.
+- [x] API security controls, CORS configuration, deployment container and Redis compose path.
+- [x] CI Python compile/test gate and frontend build gate.
+
+### Final validation gate
+
+The branch is implementation-complete only after:
+1. Pull origin V2 in the local IDE.
+2. Python dependencies install successfully on the target machine.
+3. pytest and the Next.js production build pass.
+4. A real solve, Socratic turn, PDF ingestion/RAG turn, repeated-mistake flow and HITL/media flow are exercised.
+5. The observability endpoint shows real trace data rather than mocked metrics.
+6. Student A cannot retrieve Student B memory/documents.
+7. Only after those checks should V2 be merged into master.
