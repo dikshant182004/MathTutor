@@ -118,6 +118,28 @@ async def ingest_document_pdf(
 def list_documents(student_id: str) -> dict:
     return {"items": document_store.list_documents(student_id)}
 
+class MemoryWriteRequest(BaseModel):
+    kind: str = Field(pattern="^(semantic|procedural|profile)$")
+    key: str = Field(min_length=1, max_length=160)
+    value: str = Field(min_length=1, max_length=1000)
+    confidence: float = Field(default=0.7, ge=0, le=1)
+
+@app.get("/v2/students/{student_id}/memory")
+def student_memory_view(student_id: str) -> dict:
+    validate_student_id(student_id)
+    return {
+        "semantic": student_memory.recall(student_id, "semantic"),
+        "procedural": student_memory.recall(student_id, "procedural"),
+        "profile": student_memory.recall(student_id, "profile"),
+    }
+
+@app.post("/v2/students/{student_id}/memory")
+def write_student_memory(student_id: str, request: MemoryWriteRequest) -> dict:
+    validate_student_id(student_id)
+    return student_memory.remember(
+        student_id, request.kind, request.key, request.value, request.confidence
+    )
+
 @app.get("/v2/students/{student_id}/snapshot")
 def student_snapshot(student_id: str) -> dict:
     return student_memory.snapshot(student_id)
