@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ from backend.agents.state import make_initial_state
 from backend.v2.routing import classify_problem
 from backend.v2.socratic import next_socratic_step
 from backend.v2.student_memory import student_memory
+from backend.v2.document_store import document_store
 
 
 class SolveRequest(BaseModel):
@@ -46,6 +47,22 @@ def health() -> dict:
 def plan(request: SolveRequest) -> dict:
     return classify_problem(request.problem).__dict__
 
+
+class DocumentTextRequest(BaseModel):
+    student_id: str = "local-student"
+    document_id: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=240)
+    text: str = Field(min_length=1, max_length=500000)
+
+@app.post("/v2/documents/text")
+def ingest_document_text(request: DocumentTextRequest) -> dict:
+    return document_store.ingest(
+        request.student_id, request.document_id, request.text, request.source
+    )
+
+@app.get("/v2/documents/{student_id}")
+def list_documents(student_id: str) -> dict:
+    return {"items": document_store.list_documents(student_id)}
 
 @app.get("/v2/students/{student_id}/snapshot")
 def student_snapshot(student_id: str) -> dict:
