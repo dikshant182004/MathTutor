@@ -58,6 +58,17 @@ export default function ExamPanel({API,studentId}:{API:string;studentId:string})
  const q=items[i];return <section className="card wide"><div className="card-title"><h2>Exam {i+1}/{items.length}</h2><span>{q?.difficulty}</span></div><div className="exam-question"><h2>{q?.prompt}</h2><p>Work it out on the whiteboard, then continue.</p><button className="send" onClick={()=>i+1>=items.length?setDone(true):setI(i+1)}>{i+1>=items.length?"Finish":"Next problem →"}</button></div></section>;
 }
 
+function DocumentUploader({API,studentId}:{API:string;studentId:string}){
+ const [file,setFile]=useState<File|null>(null);const [status,setStatus]=useState("");
+ async function upload(){
+  if(!file)return;setStatus("Indexing…");
+  const form=new FormData();form.append("file",file);
+  const id=file.name.replace(/[^A-Za-z0-9._-]/g,"-").slice(0,100);
+  try{const r=await fetch(`${API}/v2/documents/pdf?student_id=${encodeURIComponent(studentId)}&document_id=${encodeURIComponent(id)}`,{method:"POST",body:form});const d=await r.json();setStatus(r.ok?`Indexed ${d.chunks||0} chunks`:(d.detail||"Upload failed"))}catch{setStatus("API unavailable")}
+ }
+ return <div className="doc-upload"><strong>Student notes</strong><span>Persistent, source-aware RAG</span><div><input type="file" accept="application/pdf" onChange={e=>setFile(e.target.files?.[0]||null)}/><button onClick={upload} disabled={!file}>Index PDF</button></div>{status&&<small>{status}</small>}</div>;
+}
+
 function TelemetryPanel({API}:{API:string}){
  const [items,setItems]=useState<any[]>([]);
  useEffect(()=>{fetch(`${API}/v2/observability/traces?limit=20`).then(r=>r.json()).then(d=>setItems(d.items||[])).catch(()=>setItems([]))},[]);
@@ -118,7 +129,7 @@ function Home(){
   <section className="workspace">
    <header><div><span className="eyebrow">ADAPTIVE MATHEMATICS AGENT</span><h1>{tab==="Workspace"?"What are you working on?":tab}</h1><p>Diagnosis, guided reasoning, verified solutions and targeted practice.</p></div><div className="status"><i/> V2 agent ready</div></header>
 
-   {tab==="Workspace"&&<><div className="grid">
+   {tab==="Workspace"&&<><DocumentUploader API={API} studentId={studentId}/><div className="grid">
     <form className="card composer" onSubmit={submit}>
      <div className="mode-row"><button type="button" className={mode==="socratic"?"pill selected":"pill"} onClick={()=>setMode("socratic")}>Socratic tutor</button><button type="button" className={mode==="solve"?"pill selected":"pill"} onClick={()=>setMode("solve")}>Solve & explain</button></div>
      <textarea value={problem} onChange={e=>setProblem(e.target.value)} placeholder="Ask a math question or paste a problem..."/>
