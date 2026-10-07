@@ -2,7 +2,7 @@
 # ── LLM Inference ─────────────────────────────────────────────────────────────
 langchain-groq==1.1.2
 langchain-openai==1.4.3
-langchain-anthropic==1.7.5               # ChatGroq client for LLaMA 3.3 70B
+langchain-anthropic==1.7.5               # Groq provider integration
 groq==0.37.1                        # Groq SDK (Whisper ASR via groq.audio)
 
 # ── Agent Orchestration ────────────────────────────────────────────────────────
