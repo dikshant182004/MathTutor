@@ -1,6 +1,10 @@
 name: Tests
 
 on:
+
+permissions:
+  contents: read
+
   push:
     branches: ["master", "V2"]
   pull_request:
@@ -18,7 +22,9 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: "requirements-test.txt"
+          cache-dependency-glob: |
+            requirements.txt
+            requirements-test.txt
 
       - name: Setup Python
         run: uv python install 3.13
@@ -30,7 +36,7 @@ jobs:
         run: uv pip install -r requirements.txt -r requirements-test.txt --python .venv/bin/python
 
       - name: Compile V2 Python modules
-        run: .venv/bin/python -m compileall -q src/backend/v2 evals
+        run: .venv/bin/python -m compileall -q src/backend apps/api evals
 
       - name: Run tests
         run: .venv/bin/pytest
