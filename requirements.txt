@@ -89,3 +89,5 @@ annotated-types==0.7.0              # Annotated type support
 dataclasses-json==0.6.7             # Dataclass serialisation
 marshmallow==3.26.2                 # Serialisation (langchain-community)
 SQLAlchemy==2.0.48                  # ORM (langchain-community dependency)
+
+python-multipart==0.0.32
