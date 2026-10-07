@@ -1,14 +1,13 @@
 name: Tests
 
 on:
-
-permissions:
-  contents: read
-
   push:
     branches: ["master", "V2"]
   pull_request:
     branches: ["master", "V2"]
+
+permissions:
+  contents: read
 
 jobs:
   test:
