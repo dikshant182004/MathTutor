@@ -62,7 +62,7 @@ def deterministic_math_checks(problem: str, solution: str, final_answer: str = "
     # Detect a simple equation anywhere in the problem and compare the
     # submitted scalar answer with its solved roots. This avoids treating
     # "x + 1 = 2" as if the RHS itself were the answer.
-    equality = re.search(r"([^\n,;]{1,120})\s*=\s*([^\n,;]{1,120})", problem)
+    equality = re.search(r"([A-Za-z][A-Za-z0-9_\s+\-*/^()]{0,100})\s*=\s*([^\n,;]{1,120})", problem)
     if equality:
         try:
             lhs_text, rhs_text = equality.group(1).strip(), equality.group(2).strip()
