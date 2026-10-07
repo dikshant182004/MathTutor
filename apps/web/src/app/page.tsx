@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-type Skill={skill:string;mastery:number;attempts:number;correct:number;status:string};
+type Skill={skill:string;mastery:number;effective_mastery?:number;attempts:number;correct:number;status:string};
 type GraphNode={id:string;label:string;type:string;mastery?:number;count?:number;status?:string};
 type GraphData={nodes:Record<string,GraphNode>;edges:{source:string;target:string;type:string}[]};
 type Snapshot={skills:Skill[];weakest:Skill[];events:any[];graph:GraphData};
@@ -118,7 +118,7 @@ function Home(){
      {answer&&<div className="response"><span className="tag">{mode==="socratic"?"SOCRATIC STEP":"VERIFIED RESPONSE"}</span><p>{answer}</p></div>}
     </form>
     <section className="card"><div className="card-title"><h2>Mastery</h2><button className="link" onClick={()=>setTab("Mastery")}>View all →</button></div>
-     {skills.slice(0,4).map(s=><div className="skill" key={s.skill}><div><strong>{s.skill}</strong><span>{pct(s.mastery)}%</span></div><div className="bar"><i style={{width:`${pct(s.mastery)}%`}}/></div></div>)}
+     {skills.slice(0,4).map(s=><div className="skill" key={s.skill}><div><strong>{s.skill}</strong><span>{pct(s.effective_mastery ?? s.mastery)}%</span></div><div className="bar"><i style={{width:`${pct(s.effective_mastery ?? s.mastery)}%`}}/></div></div>)}
      {!skills.length&&<div className="empty">No skill history yet.</div>}
      <div className="next"><small>NEXT BEST ACTION</small><strong>{next?.skill||"Diagnostic practice"}</strong><p>{next?.reason||"Start a problem to establish your baseline."}</p></div>
     </section>
@@ -128,7 +128,7 @@ function Home(){
     <section className="card"><div className="card-title"><h2>Agent trace</h2><span>Real events</span></div>{(trace.length?trace:["Waiting for a learning task"]).map((x,i)=><div className="activity" key={i}><span>{i<trace.length-1?"✓":"•"}</span>{x}<em>event</em></div>)}</section>
    </div></>}
 
-   {tab==="Mastery"&&<section className="card wide"><div className="card-title"><h2>Student mastery model</h2><button className="link" onClick={refresh}>Refresh</button></div>{skills.map(s=><div className="mastery-row" key={s.skill}><div><strong>{s.skill}</strong><span>{s.attempts} attempts · {s.correct} correct</span></div><div className="bar"><i style={{width:`${pct(s.mastery)}%`}}/></div><b>{pct(s.mastery)}%</b></div>)}{!skills.length&&<div className="empty">Complete a verified problem to populate mastery.</div>}</section>}
+   {tab==="Mastery"&&<section className="card wide"><div className="card-title"><h2>Student mastery model</h2><button className="link" onClick={refresh}>Refresh</button></div>{skills.map(s=><div className="mastery-row" key={s.skill}><div><strong>{s.skill}</strong><span>{s.attempts} attempts · {s.correct} correct</span></div><div className="bar"><i style={{width:`${pct(s.effective_mastery ?? s.mastery)}%`}}/></div><b>{pct(s.effective_mastery ?? s.mastery)}%</b></div>)}{!skills.length&&<div className="empty">Complete a verified problem to populate mastery.</div>}</section>}
 
    {tab==="Mistake Lab"&&<section className="card wide"><div className="card-title"><h2>Recurring misconceptions</h2><span>Evidence from attempts</span></div>{mistakes.map((m,i)=><div className="mistake" key={i}><div className="mistake-icon">!</div><div><strong>{m.pattern}</strong><span>{m.skill} · seen {m.count} time{m.count===1?"":"s"}</span></div><button onClick={()=>{setProblem(`Practice ${m.skill} focusing on: ${m.pattern}`);setTab("Workspace")}}>Practice →</button></div>)}{!mistakes.length&&<div className="empty">No recurring mistakes detected yet.</div>}</section>}
 
