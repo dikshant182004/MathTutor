@@ -27,7 +27,7 @@ jobs:
         run: uv venv .venv
 
       - name: Install test dependencies
-        run: uv pip install -r requirements-test.txt --python .venv/bin/python
+        run: uv pip install -r requirements.txt -r requirements-test.txt --python .venv/bin/python
 
       - name: Compile V2 Python modules
         run: .venv/bin/python -m compileall -q src/backend/v2 evals
