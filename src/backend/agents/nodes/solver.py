@@ -238,7 +238,8 @@ class SolverAgent(BaseAgent):
             if human_fb and not existing_msgs:
                 feedback = f"{feedback}\nHuman feedback: {human_fb}".strip()
 
-            rag_available = has_store(thread_id)
+            persistent_rag = (state.get("retrieved_context") or "").strip()
+            rag_available = has_store(thread_id) and not persistent_rag
             is_retry = iteration > 0
 
             _RAG_SENTINEL = "[RAG context retrieved from student's notes]"
@@ -275,6 +276,17 @@ class SolverAgent(BaseAgent):
                     [system] + list(existing_msgs[1:])
                     if isinstance(existing_msgs[0], SystemMessage)
                     else [system] + list(existing_msgs)
+                )
+
+            if persistent_rag and not is_retry:
+                messages.append(
+                    HumanMessage(
+                        content=(
+                            "[Persistent RAG context from the student's indexed documents]\n"
+                            + persistent_rag
+                            + "\n[End persistent RAG context]"
+                        )
+                    )
                 )
 
             response = self._bind_tools(
