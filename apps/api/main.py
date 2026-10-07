@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
 from backend.agents.graph import chatbot
 from backend.agents.state import make_initial_state
@@ -65,6 +67,31 @@ def ingest_document_text(request: DocumentTextRequest) -> dict:
     return document_store.ingest(
         request.student_id, request.document_id, request.text, request.source
     )
+
+@app.post("/v2/documents/pdf")
+async def ingest_document_pdf(
+    student_id: str,
+    document_id: str,
+    file: UploadFile = File(...),
+) -> dict:
+    if file.content_type not in {"application/pdf", "application/octet-stream"}:
+        raise HTTPException(status_code=415, detail="Only PDF uploads are supported.")
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF exceeds the 15 MB limit.")
+    try:
+        reader = PdfReader(BytesIO(data))
+        total = 0
+        for page_no, page in enumerate(reader.pages, start=1):
+            text = page.extract_text() or ""
+            if text.strip():
+                result = document_store.ingest(
+                    student_id, document_id, text, file.filename or document_id, page_no
+                )
+                total += result["chunks"]
+        return {"document_id": document_id, "pages": len(reader.pages), "chunks": total}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Unable to parse the PDF.") from exc
 
 @app.get("/v2/documents/{student_id}")
 def list_documents(student_id: str) -> dict:
