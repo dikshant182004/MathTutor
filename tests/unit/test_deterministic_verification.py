@@ -14,3 +14,8 @@ def test_non_finite_answer_fails():
 def test_unparseable_answer_is_inconclusive():
     result = deterministic_math_checks("solve x", "Final Answer: definitely five", "definitely five")
     assert result.status == "inconclusive"
+
+
+def test_simple_equation_rejects_wrong_scalar():
+    result = deterministic_math_checks("Solve x + 1 = 2", "Final Answer: 5", "5")
+    assert result.status == "failed"
