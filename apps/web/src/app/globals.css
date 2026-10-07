@@ -16,3 +16,5 @@
 .exam-card{padding:34px;text-align:center;border-radius:16px;background:var(--surface,#f7f7f7)}.exam-card small{letter-spacing:.12em;opacity:.6}.exam-question{padding:30px 10px}.exam-question h2{font-size:28px}
 
 .trace-row{display:grid;grid-template-columns:70px 90px 80px 80px 100px 1fr;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line,#eee);font-size:12px}.trace-row small{opacity:.45;overflow:hidden;text-overflow:ellipsis}
+
+.doc-upload{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--line,#eee);border-radius:12px;margin-bottom:18px}.doc-upload>span,.doc-upload small{font-size:12px;opacity:.6}.doc-upload>div{margin-left:auto;display:flex;gap:8px}.doc-upload button{border:1px solid var(--line,#ddd);background:transparent;border-radius:8px;padding:7px 10px;cursor:pointer}.doc-upload button:disabled{opacity:.4}
