@@ -21,6 +21,7 @@ class AgentState(TypedDict):
     execution_plan: Optional[dict]
     solution_plan: Optional[dict]
     retrieved_context: Optional[str]
+    rag_citations: Optional[List[dict]]
     solver_output: Optional[dict]
     verifier_output: Optional[dict]
     safety_passed: Optional[bool]
@@ -74,6 +75,7 @@ def make_initial_state(
         "execution_plan": None,
         "solution_plan": None,
         "retrieved_context": None,
+        "rag_citations": [],
         "messages": [],
         "solve_iterations": 0,
         "solver_output": None,
