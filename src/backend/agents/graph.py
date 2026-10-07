@@ -23,6 +23,7 @@ from backend.agents.utils.db_utils import build_stm_checkpointer
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
 from backend.v2.graph_policy import execution_plan_node
 from backend.v2.student_memory import student_memory
+from backend.v2.document_store import document_store
 
 SOLVER_TOOLS = [rag_tool, calculator_tool, web_search_tool]
 
@@ -194,7 +195,18 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
             ],
         }
         out = {"ltm_context": student_context}
-        if plan.get("use_rag"):
+        retrieved = document_store.retrieve(student_id, problem, top_k=5) if plan.get("use_rag") else []
+        if retrieved:
+            citations = []
+            for item in retrieved:
+                meta = item["metadata"]
+                citations.append(
+                    f"[{item['document_id']} | page={meta.get('page')} | score={item['score']}]\n{item['text']}"
+                )
+            out["retrieved_context"] = "\n\n---\n\n".join(citations)
+            out["ltm_context"]["retrieved_documents"] = [item["document_id"] for item in retrieved]
+        elif plan.get("use_rag"):
+            # Keep the legacy thread-local RAG as a compatibility fallback.
             out = {**out, **memory_manager_node(state)}
 
         # ── Build payload for activity panel ──────────────────────────────
