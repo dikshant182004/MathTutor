@@ -1,5 +1,6 @@
 from backend.agents import *
 from backend.agents.nodes import *
+from backend.agents.verification import deterministic_equation_check
 
 class VerifierAgent(BaseAgent):
 
@@ -21,6 +22,19 @@ class VerifierAgent(BaseAgent):
                         "suggested_fix": "The solver must produce a complete written solution. Do not call tools without following up with written working.",
                         "confidence":    0.0,
                     }
+                }
+
+            deterministic = deterministic_equation_check(problem_text, final_answer)
+            if deterministic is not None:
+                payload(
+                    state, "verifier_agent",
+                    summary=f"{deterministic['status'].upper()} | deterministic SymPy check",
+                    fields={"Method": deterministic["verification_method"], "Verdict": deterministic["verdict"][:180]},
+                )
+                logger.info("[Verifier] deterministic equation check status=%s", deterministic["status"])
+                return {
+                    "verifier_output": deterministic,
+                    "agent_payload_log": state.get("agent_payload_log") or [],
                 }
 
             _VERIFIER_PROMPT = """You are a strict mathematical verifier for JEE-level problems.
