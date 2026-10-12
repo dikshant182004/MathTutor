@@ -83,7 +83,7 @@ class SafetyAgent(BaseAgent):
             policy = _load_output_policy()
             prompt = self._build_safety_prompt(solution_text, policy)
 
-            result: SafetyOutput = self.llm.with_structured_output(SafetyOutput).invoke(
+            result: SafetyOutput = self.llm.with_structured_output(SafetyOutput, method="json_schema", strict=False).invoke(
                 [HumanMessage(content=prompt)]
             )
 

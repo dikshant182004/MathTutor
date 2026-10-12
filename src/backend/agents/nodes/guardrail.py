@@ -146,7 +146,7 @@ class GuardrailAgent(BaseAgent):
             policies = _load_policies()
             prompt   = self._build_guardrail_prompt(raw_input, policies)
 
-            result: GuardrailOutput = self.llm.with_structured_output(GuardrailOutput).invoke(
+            result: GuardrailOutput = self.llm.with_structured_output(GuardrailOutput, method="json_schema", strict=False).invoke(
                 [HumanMessage(content=prompt)]
             )
 

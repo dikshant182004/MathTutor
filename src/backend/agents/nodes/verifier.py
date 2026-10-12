@@ -57,7 +57,7 @@ class VerifierAgent(BaseAgent):
                 
                 Claimed final answer: {final_answer}"""
             
-            result: VerifierOutput = self.llm.with_structured_output(VerifierOutput).invoke([
+            result: VerifierOutput = self.llm.with_structured_output(VerifierOutput, method="json_schema", strict=False).invoke([
                 HumanMessage(content=_VERIFIER_PROMPT.format(
                     problem_text      = problem_text,
                     iteration      = iteration,

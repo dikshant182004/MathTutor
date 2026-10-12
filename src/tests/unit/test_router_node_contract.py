@@ -44,7 +44,7 @@ class _FakeLLM:
     def __init__(self, result):
         self.result = result
 
-    def with_structured_output(self, _schema):
+    def with_structured_output(self, _schema, **_kwargs):
         return _FakeStructuredLLM(self.result)
 
 

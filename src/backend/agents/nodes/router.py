@@ -50,7 +50,7 @@ class IntentRouterAgent(BaseAgent):
                 Student input:
                 {problem_text}"""
 
-            structured_llm = self.llm.with_structured_output(IntentRouterOutput)
+            structured_llm = self.llm.with_structured_output(IntentRouterOutput, method="json_schema", strict=False)
             result: IntentRouterOutput = structured_llm.invoke(
                 [HumanMessage(content=_ROUTER_PROMPT.format(problem_text=problem_text))]
             )

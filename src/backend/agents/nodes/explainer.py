@@ -94,7 +94,7 @@ class ExplainerAgent(BaseAgent):
                 ltm_hint         = ltm_hint,
             )
 
-            result: ExplainerOutput = self.llm.with_structured_output(ExplainerOutput).invoke(
+            result: ExplainerOutput = self.llm.with_structured_output(ExplainerOutput, method="json_schema", strict=False).invoke(
                 [HumanMessage(content=prompt)]
             )
 

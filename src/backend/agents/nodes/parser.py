@@ -35,7 +35,7 @@ class ParserAgent(BaseAgent):
                 Input:
                 {_raw_text}"""
  
-            structured_llm = self.llm.with_structured_output(ParserOutput)
+            structured_llm = self.llm.with_structured_output(ParserOutput, method="json_schema", strict=False)
             parsed: ParserOutput = structured_llm.invoke(
                 [HumanMessage(content=_PARSER_PROMPT.format(_raw_text=raw_text))])
 

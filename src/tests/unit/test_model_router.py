@@ -108,3 +108,31 @@ def test_live_structured_output_smoke_all_profiles():
         )
         parsed = model.invoke('Return JSON with result set to exactly "ok".')
         assert parsed.result == "ok"
+
+
+@pytest.mark.unit
+def test_live_structured_output_smoke_existing_agent_schemas():
+    from backend.agents.utils.artifacts import (
+        ExplainerOutput, GuardrailOutput, IntentRouterOutput, ParserOutput,
+        SafetyOutput, VerifierOutput,
+    )
+
+    if os.getenv("MATH_TUTOR_LIVE_SMOKE") != "1" or not os.getenv("GROQ_API_KEY"):
+        pytest.skip("Set MATH_TUTOR_LIVE_SMOKE=1 and GROQ_API_KEY to test the six live agent schemas.")
+
+    router = ModelRouter(
+        api_key=os.environ["GROQ_API_KEY"],
+        reasoning_api_key=os.getenv("GROQ_API_KEY_2"),
+    )
+    examples = [
+        (ParserOutput, 'Parse the simple problem "x + 1 = 2". Return problem_text="x + 1 = 2", topic="algebra", variables=["x"], constraints=[], needs_clarification=false, clarification_reason=null.'),
+        (IntentRouterOutput, 'Classify "x + 1 = 2". Return topic="algebra", difficulty="easy", solver_strategy="Subtract 1 from both sides.", intent_type="solve".'),
+        (GuardrailOutput, 'The input is a safe algebra equation. Return passed=true, topic="algebra", block_reason=null, message=null.'),
+        (SafetyOutput, 'The output "x = 1" is safe. Return passed=true, violation_type=null, reason="No safety issue found."'),
+        (VerifierOutput, 'The equation x + 1 = 2 has answer x = 1. Return status="correct", verdict="Substitution confirms x=1.", suggested_fix=null, hitl_reason=null, confidence=0.99.'),
+        (ExplainerOutput, 'Explain x + 1 = 2. Return approach_summary="Subtract 1 from both sides.", steps=[{step_number:1, heading:"Subtract 1", working:"x + 1 - 1 = 2 - 1", result:"x = 1", why:"Keep the equation balanced.", inline_diagram:null}], final_answer="x = 1", key_formulae=[], key_concepts=["equation solving"], common_mistakes=[], difficulty_rating="easy".'),
+    ]
+    model = router.chat("fast", "fast")
+    for schema, prompt in examples:
+        parsed = model.with_structured_output(schema, method="json_schema", strict=False).invoke(prompt)
+        assert isinstance(parsed, schema)

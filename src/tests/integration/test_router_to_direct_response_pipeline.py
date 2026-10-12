@@ -39,7 +39,7 @@ class _FakeStructuredLLM:
 class _FakeRouterLLM:
     def __init__(self, result):
         self._result = result
-    def with_structured_output(self, _):
+    def with_structured_output(self, _, **_kwargs):
         return _FakeStructuredLLM(self._result)
 
 
