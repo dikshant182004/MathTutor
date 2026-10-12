@@ -6,7 +6,8 @@
 
 - **Phase A:** model registry/profiles/router and structured-output compatibility; CI checks pass, live Groq smoke tests remain opt-in.
 - **Phase B:** deterministic injection/PII prefilter, merged structured intake, table-driven routing policy, and calculator input restrictions with a worker-process timeout.
-- **Next:** Phase C (graph slimming, parallel retrieval, verification/compose/learning nodes, budgets and streaming). Not started.
+- **Phase C:** cumulative node wall-time telemetry; request-local model/tool budgets; concurrent LTM + optional web retrieval; deterministic single-variable equation checks with LLM fallback for unsupported cases; deterministic learning outcomes that do not mark unverified work correct; removed shared `tool_signals` state in direct responses. Streamlit already consumes LangGraph updates through `chatbot.stream`; timing values are now included in graph state updates.
+- **Validation note:** CI is the acceptance gate for this phase. Live-provider behavior and UI display of timing values still require manual validation.
 
 ---
 
