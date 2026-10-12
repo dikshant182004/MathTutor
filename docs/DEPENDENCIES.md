@@ -25,5 +25,6 @@ Compatibility references:
 
 Notes:
 - Groq documents JSON-schema structured outputs for openai/gpt-oss-20b and openai/gpt-oss-120b, including strict mode; both support reasoning_effort values low/medium/high and tool calling. openai/gpt-oss-safeguard-20b supports best-effort JSON schema, so the registry does not mark it as strict-schema compatible.
+- ModelRouter sets ChatGroq max_retries=0 and owns one 500 ms backoff retry for HTTP 429/5xx, followed by at most one profile downgrade; non-transient errors are not retried. The downgrade is skipped when it would repeat the same model and effort.
 - A successful dependency installation and test run is still required before declaring the phase accepted.
 - The remaining full-stack dependency matrix will be documented when those stacks are introduced in their relevant phases.
