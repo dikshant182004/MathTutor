@@ -1,4 +1,5 @@
 pytest
+sympy==1.14.0
 langgraph==1.2.12
 langgraph-checkpoint-redis==0.5.2
 langgraph-prebuilt==1.1.0
