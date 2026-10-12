@@ -46,7 +46,7 @@ def _safe_calculator_expression(expression: str, timeout_seconds: float = 5.0) -
         raise ValueError("Expression contains an unknown function or name.")
     if re.search(r"\.(?!det\(\)|inv\(\)|eigenvals\(\))", expression):
         raise ValueError("Attribute access is not allowed.")
-    context = multiprocessing.get_context("spawn")
+    context = multiprocessing.get_context("fork" if "fork" in multiprocessing.get_all_start_methods() else "spawn")
     result_queue = context.Queue(maxsize=1)
     process = context.Process(target=_calculator_worker, args=(expression, result_queue), daemon=True)
     process.start()
@@ -55,9 +55,10 @@ def _safe_calculator_expression(expression: str, timeout_seconds: float = 5.0) -
         process.terminate()
         process.join()
         raise ValueError("Calculation exceeded the 5-second time limit.")
-    if result_queue.empty():
-        raise ValueError("Calculator process failed without a result.")
-    status, value = result_queue.get()
+    try:
+        status, value = result_queue.get(timeout=1.0)
+    except Exception as exc:
+        raise ValueError("Calculator process failed without a result.") from exc
     result_queue.close()
     if status != "ok":
         raise ValueError(value)
