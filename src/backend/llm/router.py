@@ -44,12 +44,15 @@ class RoutedChatModel:
 
         # Exactly one backoff retry on the same model.
         time.sleep(0.5)
+        retry_error: BaseException | None = None
         try:
             return operation(self._primary)
-        except Exception as retry_error:
-            if not _is_transient_provider_error(retry_error):
+        except Exception as error:
+            if not _is_transient_provider_error(error):
                 raise
+            retry_error = error
 
+        assert retry_error is not None
         fallback_profile = self.router.fallback_profile(self.profile_id)
         if fallback_profile is None:
             raise retry_error
