@@ -37,7 +37,8 @@ def timed_node(
                 }
             updates = fn(state) or {}
             if model_node:
-                updates = {**updates, "llm_calls_used": used + 1}
+                calls_made = max(0, int(updates.pop("llm_calls_made", 1)))
+                updates = {**updates, "llm_calls_used": used + calls_made}
             return {
                 **updates,
                 "node_timings_ms": record_node_timing(
