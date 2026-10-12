@@ -216,13 +216,18 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         parsed = state.get("parsed_data") or {}
         needs_web = bool(plan.get("needs_web"))
         query = str(parsed.get("problem_text") or plan.get("topic") or "").strip()[:500]
+        _, max_tools = budget_limits(state)
+        tool_calls_used = int(state.get("tool_calls_used") or 0)
+        prefetch_web = bool(needs_web and query and tool_calls_used < max_tools)
         # Student memory retrieval and optional web retrieval are independent; run concurrently.
-        with ThreadPoolExecutor(max_workers=2 if needs_web and query else 1) as pool:
+        with ThreadPoolExecutor(max_workers=2 if prefetch_web else 1) as pool:
             memory_future = pool.submit(memory_manager_node, state)
-            web_future = pool.submit(web_search_tool.invoke, {"query": query}) if needs_web and query else None
+            web_future = pool.submit(web_search_tool.invoke, {"query": query}) if prefetch_web else None
             out = memory_future.result()
             web_context = web_future.result() if web_future else ""
         state["retrieved_context"] = str(web_context or "")[:12000]
+        if prefetch_web:
+            state["tool_calls_used"] = tool_calls_used + 1
 
         # ── Build payload for activity panel ──────────────────────────────
         ltm = out.get("ltm_context") or {}
@@ -281,6 +286,7 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
             "ltm_mode": "retrieve",
             **out,
             "retrieved_context": state.get("retrieved_context") or "",
+            "tool_calls_used": state.get("tool_calls_used") or 0,
             "agent_payload_log": state.get("agent_payload_log") or [],
         }
     except Exception as e:
