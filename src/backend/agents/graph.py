@@ -96,15 +96,24 @@ def _route_after_intent_router(state: AgentState) -> str:
 
 
 def _route_solver_or_tools(state: AgentState) -> str:
-    """solver_agent -> [tool_node | verifier_agent] (ReAct loop)"""
+    """Bounded solver/tool loop; stop when the request budget is exhausted."""
+    if state.get("budget_exhausted"):
+        return "END"
     messages = state.get("messages") or []
-    last     = messages[-1] if messages else None
-    if last and getattr(last, "tool_calls", None):
+    last = messages[-1] if messages else None
+    calls = getattr(last, "tool_calls", None) or []
+    if calls:
+        _, max_tools = budget_limits(state)
+        used = int(state.get("tool_calls_used") or 0)
+        if used + len(calls) > max_tools:
+            return "budget_stop_node"
         return "tool_node"
     return "verifier_agent"
 
 
 def _route_after_verifier(state: AgentState) -> str:
+    if state.get("budget_exhausted"):
+        return "END"
     """
     verifier_agent -> [safety | solver(retry) | hitl]
 
@@ -130,7 +139,31 @@ def _route_after_verifier(state: AgentState) -> str:
     return "solver_agent"
 
 
-def _route_after_safety(state: AgentState) -> str:
+def _route_after_direct_response(state: AgentState) -> str:
+    return "END" if state.get("budget_exhausted") else "safety_agent"
+
+
+def _route_after_explainer(state: AgentState) -> str:
+    return "END" if state.get("budget_exhausted") else "hitl_node"
+
+
+def _run_tool_node(state: AgentState) -> dict:
+    """Execute only the number of tool calls allowed by this request's budget."""
+    messages = state.get("messages") or []
+    last = messages[-1] if messages else None
+    calls = getattr(last, "tool_calls", None) or []
+    _, max_tools = budget_limits(state)
+    used = int(state.get("tool_calls_used") or 0)
+    if used + len(calls) > max_tools:
+        return {
+            "budget_exhausted": True,
+            "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request.",
+        }
+    result = ToolNode(SOLVER_TOOLS)(state)
+    return {**result, "tool_calls_used": used + len(calls)}
+
+
+def _route_after_safety(state: AgentState):
     """safety_agent -> [explainer_agent | hitl_node | END]
  
     solve/hint/formula_lookup path : safety -> explainer_agent
@@ -347,6 +380,8 @@ class MathTutorWorkflow(
         logger.info("[Graph] MathTutorWorkflow compiled successfully")
 
     def _route_intake(self, state: AgentState) -> str:
+        if state.get("budget_exhausted"):
+            return "END"
         target, reason = route_with_reason(state)
         logger.info("[RoutingPolicy] target=%s reason=%s", target, reason)
         return target
@@ -360,17 +395,18 @@ class MathTutorWorkflow(
         graph.add_node("ocr_node", timed_node("ocr_node", _ocr_node_with_confidence_gate))
         graph.add_node("asr_node", timed_node("asr_node", _asr_node_with_confidence_gate))
         graph.add_node("prefilter", timed_node("prefilter", prefilter_node))
-        graph.add_node("intake", timed_node("intake", self.intake_node))
+        graph.add_node("intake", timed_node("intake", self.intake_node, model_node=True))
         graph.add_node("retrieve_ltm", timed_node("retrieve_ltm", _retrieve_ltm_node))
 
-        graph.add_node("solver_agent", timed_node("solver_agent", self.solver_agent))
-        graph.add_node("tool_node", timed_node("tool_node", ToolNode(SOLVER_TOOLS)))
-        graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent))
+        graph.add_node("solver_agent", timed_node("solver_agent", self.solver_agent, model_node=True))
+        graph.add_node("tool_node", timed_node("tool_node", _run_tool_node))
+        graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent, model_node=True))
         graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent))
-        graph.add_node("explainer_agent", timed_node("explainer_agent", self.explainer_agent))
-        graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent))
+        graph.add_node("explainer_agent", timed_node("explainer_agent", self.explainer_agent, model_node=True))
+        graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent, model_node=True))
         graph.add_node("hitl_node", timed_node("hitl_node", self.hitl_node))
         graph.add_node("store_ltm", timed_node("store_ltm", _store_ltm_node))
+        graph.add_node("budget_stop_node", lambda state: {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."})
 
         # ── Entry ──────────────────────────────────────────────────────────────
         graph.set_entry_point("detect_input")
@@ -409,15 +445,15 @@ class MathTutorWorkflow(
         graph.add_edge("retrieve_ltm", "solver_agent")
 
         # direct_response_node -> safety_agent (same safety check as solve path)
-        graph.add_edge("direct_response_node", "safety_agent")
+        graph.add_conditional_edges("direct_response_node", _route_after_direct_response, {"safety_agent": "safety_agent", "END": END})
 
         # ReAct loop: solver <-> tools; final -> verifier
         graph.add_conditional_edges(
             "solver_agent",
             _route_solver_or_tools,
-            {"tool_node": "tool_node", "verifier_agent": "verifier_agent"},
+            {"tool_node": "tool_node", "verifier_agent": "verifier_agent", "budget_stop_node": "budget_stop_node", "END": END},
         )
-        graph.add_edge("tool_node", "solver_agent")
+        graph.add_conditional_edges("tool_node", lambda state: "END" if state.get("budget_exhausted") else "solver_agent", {"solver_agent": "solver_agent", "END": END})
 
         # verifier -> [safety | solver(retry) | hitl]
         graph.add_conditional_edges(
@@ -436,7 +472,7 @@ class MathTutorWorkflow(
         )
 
         # explainer -> hitl (satisfaction check)
-        graph.add_edge("explainer_agent", "hitl_node")
+        graph.add_conditional_edges("explainer_agent", _route_after_explainer, {"hitl_node": "hitl_node", "END": END})
      
         graph.add_conditional_edges(
             "hitl_node",
