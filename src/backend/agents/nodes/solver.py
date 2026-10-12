@@ -227,11 +227,15 @@ class SolverAgent(BaseAgent):
             ):
                 existing_msgs = []
 
-            existing_msgs = trim_messages_if_needed(   # trimming
-                messages  = list(existing_msgs),   
-                thread_id = thread_id,
-                llm       = self.reserve_llm,
+            messages_before_trim = list(existing_msgs)
+            existing_msgs = trim_messages_if_needed(
+                messages=list(existing_msgs),
+                thread_id=thread_id,
+                llm=self.reserve_llm,
             )
+            # Trimming performs one real summarization LLM call only when it changes the messages.
+            if existing_msgs != messages_before_trim:
+                llm_calls_made += 1
 
             ltm_hint = format_ltm_for_solver(ltm_context, topic) if ltm_context else ""
 
@@ -282,6 +286,15 @@ class SolverAgent(BaseAgent):
                     else [system] + list(existing_msgs)
                 )
 
+            if int(state.get("llm_calls_used") or 0) + llm_calls_made >= int(state.get("max_llm_calls") or 8):
+                return {
+                    "llm_calls_made": llm_calls_made,
+                    "budget_exhausted": True,
+                    "final_response": (
+                        "This request reached its configured model-call budget. "
+                        "Please narrow the question or start a new request."
+                    ),
+                }
             response = self._bind_tools(
                 rag_available, thread_id, rag_already_called, is_retry
             ).invoke(messages)
