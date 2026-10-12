@@ -64,7 +64,6 @@ class AgentState(TypedDict):
     llm_calls_used: int
     tool_calls_used: int
     budget_exhausted: Optional[bool]
-    retrieved_context: Optional[str]
 
 
 def make_initial_state(
