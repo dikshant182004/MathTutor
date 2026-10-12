@@ -56,7 +56,7 @@ class SafetyAgent(BaseAgent):
             solution_text = solver_out.get("solution", "")
 
             if not solution_text:
-                return {"safety_passed": True}
+                return {"safety_passed": True, "llm_calls_made": 0}
 
             # ── Stage 1: keyword fast path ────────────────────────────────────
             is_blocked, kw_reason = self._keyword_check(solution_text)
@@ -77,6 +77,7 @@ class SafetyAgent(BaseAgent):
                     "safety_passed":  False,
                     "safety_reason":  kw_reason,
                     "final_response": message,
+                    "llm_calls_made": 0,
                 }
 
             # ── Stage 2: LLM policy check ─────────────────────────────────────
@@ -113,7 +114,7 @@ class SafetyAgent(BaseAgent):
                 },
             )
             logger.info(f"[Safety] passed={result.passed}")
-            return {**updates, "agent_payload_log": state.get("agent_payload_log") or []}
+            return {**updates, "llm_calls_made": 1, "agent_payload_log": state.get("agent_payload_log") or []}
 
         except Exception as e:
             logger.error(f"[Safety] failed: {e}")
