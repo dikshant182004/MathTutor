@@ -57,6 +57,15 @@ class AgentState(TypedDict):
 
     messages: Annotated[list[BaseMessage], add_messages]
 
+    # Per-request Phase C observability and bounded execution.
+    node_timings_ms: Optional[dict]
+    max_llm_calls: Optional[int]
+    max_tool_calls: Optional[int]
+    llm_calls_used: int
+    tool_calls_used: int
+    budget_exhausted: Optional[bool]
+    retrieved_context: Optional[str]
+
 
 def make_initial_state(
     student_id:  str,
@@ -132,5 +141,14 @@ def make_initial_state(
 
         "agent_payload_log":   [],
         "conversation_log":    [],
+
+        # Request-local budgets/telemetry. Defaults are bounded and overridable.
+        "node_timings_ms":     {},
+        "max_llm_calls":       8,
+        "max_tool_calls":      6,
+        "llm_calls_used":      0,
+        "tool_calls_used":     0,
+        "budget_exhausted":    False,
+        "retrieved_context":   None,
     })
  
