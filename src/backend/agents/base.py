@@ -15,6 +15,6 @@ class BaseAgent:
                 "GROQ_API_KEY is not set — add it to .env (local) or Streamlit Cloud secrets."
             )
         self.model_router = ModelRouter(api_key=key, reasoning_api_key=key_2 or None)
-        self.llm = self.model_router.chat("fast", profile_id="balanced")
-        self.reserve_llm = self.model_router.chat("reasoning", profile_id="balanced")
+        self.llm = self.model_router.routed_chat("fast", profile_id="balanced")
+        self.reserve_llm = self.model_router.routed_chat("reasoning", profile_id="balanced")
         self.media_processor = MediaProcessor()

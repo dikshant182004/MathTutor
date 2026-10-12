@@ -58,7 +58,7 @@ def test_reasoning_tier_uses_second_key_when_configured(monkeypatch):
     assert captured["api_key"] == "secondary"
     assert captured["model"] == GPT_OSS_120B
     assert captured["reasoning_effort"] == "medium"
-    assert captured["max_retries"] == 1
+    assert captured["max_retries"] == 0
 
 
 @pytest.mark.unit
@@ -84,24 +84,69 @@ def test_fallback_and_retry_effort_are_bounded():
 
 
 @pytest.mark.unit
-def test_safety_model_id_is_allowlisted():
+def test_transient_errors_retry_once_then_downgrade_profile(monkeypatch):
+    calls = []
+    class ProviderError(Exception):
+        status_code = 503
+    class FakeModel:
+        def __init__(self, model, effort):
+            self.model = model
+            self.effort = effort
+        def invoke(self, _input, **_kwargs):
+            calls.append((self.model, self.effort))
+            if self.model == GPT_OSS_120B:
+                raise ProviderError("temporary upstream failure")
+            return "fallback-result"
+    class FakeChatGroq:
+        def __init__(self, **kwargs):
+            self.model = kwargs["model"]
+            self.effort = kwargs.get("reasoning_effort")
+        def invoke(self, input, **kwargs):
+            return FakeModel(self.model, self.effort).invoke(input, **kwargs)
+    monkeypatch.setattr("backend.llm.router.ChatGroq", FakeChatGroq)
+    monkeypatch.setattr("backend.llm.router.time.sleep", lambda _seconds: None)
+    result = ModelRouter(api_key="primary").routed_chat("reasoning", "balanced").invoke("question")
+    assert result == "fallback-result"
+    assert calls == [
+        (GPT_OSS_120B, "medium"),
+        (GPT_OSS_120B, "medium"),
+        (GPT_OSS_20B, "low"),
+    ]
+
+
+@pytest.mark.unit
+def test_non_transient_errors_do_not_retry_or_fallback(monkeypatch):
+    calls = []
+    class FakeModel:
+        def invoke(self, _input, **_kwargs):
+            calls.append("called")
+            raise ValueError("bad request")
+    class FakeChatGroq:
+        def __init__(self, **_kwargs):
+            pass
+        def invoke(self, input, **kwargs):
+            return FakeModel().invoke(input, **kwargs)
+    monkeypatch.setattr("backend.llm.router.ChatGroq", FakeChatGroq)
+    routed = ModelRouter(api_key="primary").routed_chat("reasoning", "balanced")
+    with pytest.raises(ValueError, match="bad request"):
+        routed.invoke("question")
+    assert calls == ["called"]
+
+
+@pytest.mark.unit
+def test_safety_model_id_is_allowlisted(monkeypatch):
+    monkeypatch.delenv("MODEL_SAFETY", raising=False)
     assert resolve_model_id("safety") == GPT_OSS_SAFEGUARD_20B
 
 
 @pytest.mark.unit
 def test_live_structured_output_smoke_all_profiles():
     from pydantic import BaseModel, Field
-
     if os.getenv("MATH_TUTOR_LIVE_SMOKE") != "1" or not os.getenv("GROQ_API_KEY"):
         pytest.skip("Set MATH_TUTOR_LIVE_SMOKE=1 and GROQ_API_KEY to run live Groq smoke tests.")
-
     class SmokeResult(BaseModel):
         result: str = Field(description="The exact word requested by the smoke test.")
-
-    router = ModelRouter(
-        api_key=os.environ["GROQ_API_KEY"],
-        reasoning_api_key=os.getenv("GROQ_API_KEY_2"),
-    )
+    router = ModelRouter(api_key=os.environ["GROQ_API_KEY"], reasoning_api_key=os.getenv("GROQ_API_KEY_2"))
     for profile_id in ("fast", "balanced", "deep"):
         model = router.chat("reasoning", profile_id).with_structured_output(
             SmokeResult, method="json_schema", strict=True
@@ -116,18 +161,13 @@ def test_live_structured_output_smoke_existing_agent_schemas():
         ExplainerOutput, GuardrailOutput, IntentRouterOutput, ParserOutput,
         SafetyOutput, VerifierOutput,
     )
-
     if os.getenv("MATH_TUTOR_LIVE_SMOKE") != "1" or not os.getenv("GROQ_API_KEY"):
         pytest.skip("Set MATH_TUTOR_LIVE_SMOKE=1 and GROQ_API_KEY to test the six live agent schemas.")
-
-    router = ModelRouter(
-        api_key=os.environ["GROQ_API_KEY"],
-        reasoning_api_key=os.getenv("GROQ_API_KEY_2"),
-    )
+    router = ModelRouter(api_key=os.environ["GROQ_API_KEY"], reasoning_api_key=os.getenv("GROQ_API_KEY_2"))
     examples = [
-        (ParserOutput, 'Parse the simple problem "x + 1 = 2". Return problem_text="x + 1 = 2", topic="algebra", variables=["x"], constraints=[], needs_clarification=false, clarification_reason=null.'),
+        (ParserOutput, 'Parse "x + 1 = 2". Return problem_text="x + 1 = 2", topic="algebra", variables=["x"], constraints=[], needs_clarification=false, clarification_reason=null.'),
         (IntentRouterOutput, 'Classify "x + 1 = 2". Return topic="algebra", difficulty="easy", solver_strategy="Subtract 1 from both sides.", intent_type="solve".'),
-        (GuardrailOutput, 'The input is a safe algebra equation. Return passed=true, topic="algebra", block_reason=null, message=null.'),
+        (GuardrailOutput, 'This is a safe algebra equation. Return passed=true, topic="algebra", block_reason=null, message=null.'),
         (SafetyOutput, 'The output "x = 1" is safe. Return passed=true, violation_type=null, reason="No safety issue found."'),
         (VerifierOutput, 'The equation x + 1 = 2 has answer x = 1. Return status="correct", verdict="Substitution confirms x=1.", suggested_fix=null, hitl_reason=null, confidence=0.99.'),
         (ExplainerOutput, 'Explain x + 1 = 2. Return approach_summary="Subtract 1 from both sides.", steps=[{step_number:1, heading:"Subtract 1", working:"x + 1 - 1 = 2 - 1", result:"x = 1", why:"Keep the equation balanced.", inline_diagram:null}], final_answer="x = 1", key_formulae=[], key_concepts=["equation solving"], common_mistakes=[], difficulty_rating="easy".'),
