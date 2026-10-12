@@ -1,6 +1,12 @@
 # 🧮 JEE Math Tutor Agent — Multi-Agent AI Tutor with LangGraph & Long-Term Memory
 
-> Multi-agent AI math tutor built with LangGraph — CRAG retrieval, episodic & semantic long-term memory, Tavily MCP web search, Google OAuth, and Neo4j-style memory graph. Powered by LLaMA 3.3 70B on Groq.
+> Phase-based V2 migration. The current `Agent` branch introduces an allowlisted Groq model registry/profiles, deterministic input prefiltering, one structured intake stage, pure routing policy, and a bounded SymPy calculator. The legacy Streamlit interface and existing memory/RAG modules remain during migration; features not yet connected to the new pipeline are not represented as completed.
+
+## Current implementation status
+
+- **Phase A:** model registry/profiles/router and structured-output compatibility; CI checks pass, live Groq smoke tests remain opt-in.
+- **Phase B:** deterministic injection/PII prefilter, merged structured intake, table-driven routing policy, and calculator input restrictions with a worker-process timeout.
+- **Next:** Phase C (graph slimming, parallel retrieval, verification/compose/learning nodes, budgets and streaming). Not started.
 
 ---
 
