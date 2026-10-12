@@ -140,34 +140,6 @@ def _install_backend_node_stubs() -> None:
     sys.modules["backend.agents.nodes.tools.mcp"] = mcp_pkg
     sys.modules["backend.agents.nodes.tools.tools"] = tools_mod
 
-    if "redisvl" not in sys.modules:
-        redisvl_mod = types.ModuleType("redisvl")
-        redisvl_index_mod = types.ModuleType("redisvl.index")
-        redisvl_query_mod = types.ModuleType("redisvl.query")
-
-        class SearchIndex:
-            @classmethod
-            def from_dict(cls, _schema):
-                return cls()
-
-            def connect(self, redis_url=None):
-                return None
-
-            def create(self, overwrite=False):
-                return None
-
-            def query(self, _query):
-                return []
-
-        class VectorQuery:
-            def __init__(self, **kwargs):
-                self.kwargs = kwargs
-
-        redisvl_index_mod.SearchIndex = SearchIndex
-        redisvl_query_mod.VectorQuery = VectorQuery
-        sys.modules["redisvl"] = redisvl_mod
-        sys.modules["redisvl.index"] = redisvl_index_mod
-        sys.modules["redisvl.query"] = redisvl_query_mod
 
 
 _install_backend_node_stubs()
