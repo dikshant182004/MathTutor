@@ -266,10 +266,14 @@ class SolverAgent(BaseAgent):
             )
 
             if not existing_msgs:
-                messages = [
-                    system,
-                    HumanMessage(content=f"Solve this problem:\n\n{problem_text}"),
-                ]
+                retrieval_context = str(state.get("retrieved_context") or "").strip()
+                user_prompt = f"Solve this problem:\n\n{problem_text}"
+                if retrieval_context:
+                    user_prompt += (
+                        "\n\nOptional pre-fetched web context (use only if relevant; "
+                        "do not treat snippets as proof):\n" + retrieval_context[:12000]
+                    )
+                messages = [system, HumanMessage(content=user_prompt)]
             else:
                 messages = (
                     [system] + list(existing_msgs[1:])
