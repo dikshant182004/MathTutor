@@ -224,7 +224,11 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
             memory_future = pool.submit(memory_manager_node, state)
             web_future = pool.submit(web_search_tool.invoke, {"query": query}) if prefetch_web else None
             out = memory_future.result()
-            web_context = web_future.result() if web_future else ""
+            try:
+                web_context = web_future.result() if web_future else ""
+            except Exception as exc:
+                logger.warning("[Retrieval] Optional web prefetch failed: %s", type(exc).__name__)
+                web_context = ""
         state["retrieved_context"] = str(web_context or "")[:12000]
         if prefetch_web:
             state["tool_calls_used"] = tool_calls_used + 1
