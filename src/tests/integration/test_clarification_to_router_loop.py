@@ -36,7 +36,7 @@ class _FakeStructuredLLM:
 
 
 class _FakeRouterLLM:
-    def with_structured_output(self, _): return _FakeStructuredLLM()
+    def with_structured_output(self, _, **_kwargs): return _FakeStructuredLLM()
 
 
 @pytest.mark.integration

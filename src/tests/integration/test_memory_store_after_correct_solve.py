@@ -35,7 +35,7 @@ class _FakeSolverReserveLLM:
 
 
 class _FakeVerifierLLM:
-    def with_structured_output(self, _schema):
+    def with_structured_output(self, _schema, **_kwargs):
         return self
 
     def invoke(self, _):

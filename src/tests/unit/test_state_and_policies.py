@@ -122,7 +122,7 @@ def test_safety_llm_path_blocks_borderline_content(monkeypatch):
             }
 
     class _FakeLLM:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **_kwargs):
             return self
 
         def invoke(self, _msgs):
@@ -156,7 +156,7 @@ def test_safety_llm_path_passes_clean_content(monkeypatch):
             }
 
     class _FakeLLM:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **_kwargs):
             return self
 
         def invoke(self, _msgs):
@@ -208,7 +208,7 @@ def test_verifier_marks_correct_when_llm_confirms(monkeypatch):
             }
 
     class _FakeLLM:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **_kwargs):
             return self
 
         def invoke(self, _msgs):
@@ -246,7 +246,7 @@ def test_verifier_triggers_retry_when_incorrect_and_below_max(monkeypatch):
             }
 
     class _FakeLLM:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **_kwargs):
             return self
 
         def invoke(self, _msgs):
@@ -289,7 +289,7 @@ def test_verifier_does_not_retry_when_at_max_iterations(monkeypatch):
             }
 
     class _FakeLLM:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **_kwargs):
             return self
 
         def invoke(self, _msgs):
