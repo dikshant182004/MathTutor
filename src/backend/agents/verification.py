@@ -25,6 +25,9 @@ def deterministic_equation_check(problem: str, final_answer: str) -> dict | None
     equation = max(equations, key=len)
     if not _ALLOWED.fullmatch(equation):
         return None
+    # Avoid expensive symbolic work on adversarially large exponents.
+    if len(equation) > 200 or re.search(r"\^\s*(?:[5-9]|\d{2,})", equation):
+        return None
     left_text, right_text = (part.strip() for part in equation.split("=", 1))
     variables = set(re.findall(r"[xyzXYZ]", equation.lower()))
     if len(variables) != 1:
