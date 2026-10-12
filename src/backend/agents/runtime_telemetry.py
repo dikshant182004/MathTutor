@@ -12,12 +12,32 @@ def record_node_timing(state: dict[str, Any], node: str, elapsed_ms: float) -> d
     return timings
 
 
-def timed_node(node_name: str, fn: Callable[[dict[str, Any]], dict[str, Any]]):
+def timed_node(
+    node_name: str,
+    fn: Callable[[dict[str, Any]], dict[str, Any]],
+    *,
+    model_node: bool = False,
+):
     """Wrap a node while preserving its updates and recording measured duration."""
     def wrapped(state: dict[str, Any]) -> dict[str, Any]:
         started = perf_counter()
         try:
+            max_llm, _ = budget_limits(state)
+            used = int(state.get("llm_calls_used") or 0)
+            if model_node and used >= max_llm:
+                return {
+                    "budget_exhausted": True,
+                    "final_response": (
+                        "This request reached its configured model-call budget. "
+                        "Please narrow the question or start a new request."
+                    ),
+                    "node_timings_ms": record_node_timing(
+                        state, node_name, (perf_counter() - started) * 1000.0
+                    ),
+                }
             updates = fn(state) or {}
+            if model_node:
+                updates = {**updates, "llm_calls_used": used + 1}
             return {
                 **updates,
                 "node_timings_ms": record_node_timing(
