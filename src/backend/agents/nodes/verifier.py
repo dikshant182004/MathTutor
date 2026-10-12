@@ -34,6 +34,7 @@ class VerifierAgent(BaseAgent):
                 logger.info("[Verifier] deterministic equation check status=%s", deterministic["status"])
                 return {
                     "verifier_output": deterministic,
+                    "llm_calls_made": 0,
                     "agent_payload_log": state.get("agent_payload_log") or [],
                 }
 
@@ -99,7 +100,7 @@ class VerifierAgent(BaseAgent):
                 },
             )
             logger.info(f"[Verifier] status={result.status} confidence={result.confidence:.2f}")
-            return {**updates, "agent_payload_log": state.get("agent_payload_log") or []}
+            return {**updates, "llm_calls_made": 1, "agent_payload_log": state.get("agent_payload_log") or []}
 
         except Exception as e:
             logger.error(f"[Verifier] failed: {e}")
