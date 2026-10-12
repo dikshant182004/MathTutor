@@ -21,7 +21,8 @@ class VerifierAgent(BaseAgent):
                         "verdict":       "No solution text was produced by the solver.",
                         "suggested_fix": "The solver must produce a complete written solution. Do not call tools without following up with written working.",
                         "confidence":    0.0,
-                    }
+                    },
+                    "llm_calls_made": 0,
                 }
 
             deterministic = deterministic_equation_check(problem_text, final_answer)
