@@ -11,17 +11,6 @@ if str(SRC) not in sys.path:
 
 
 def _install_external_service_stubs() -> None:
-    if "groq" not in sys.modules:
-        groq_mod = types.ModuleType("groq")
-
-        class Groq:
-            def __init__(self, *args, **kwargs):
-                self.args = args
-                self.kwargs = kwargs
-
-        groq_mod.Groq = Groq
-        sys.modules["groq"] = groq_mod
-
     if "google" not in sys.modules:
         google_mod = types.ModuleType("google")
         cloud_mod = types.ModuleType("google.cloud")
