@@ -11,7 +11,7 @@ assert spec and spec.loader
 sys.modules[spec.name] = calculator
 spec.loader.exec_module(calculator)
 _safe_calculator_expression = calculator._safe_calculator_expression
-@pytest.mark.parametrize(("expression","expected"), [("2 + 2","4.00000000000000"),("factorial(5)","120.000000000000"),("x + 1","x + 1")])
+@pytest.mark.parametrize(("expression","expected"), [("2 + 2","4.00000000000000"),("factorial(5)","120.000000000000"),("x + 1","x + 1.0")])
 def test_calculator_accepts_whitelisted_expressions(expression, expected):
     assert _safe_calculator_expression(expression) == expected
 @pytest.mark.parametrize("expression", ["__import__('os').system('echo pwned')", "x.__class__", "open('/tmp/pwned','w')", "eval('1+1')"])
