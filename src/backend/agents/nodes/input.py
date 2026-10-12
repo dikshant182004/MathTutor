@@ -23,7 +23,14 @@ def detect_input_type(state: AgentState) -> AgentState:
         state["human_feedback"]      = None
         state["user_corrected_text"] = None
         state["agent_payload_log"]= None
-        state["direct_response_tool_calls"] = None 
+        state["direct_response_tool_calls"] = None
+
+        # Reset request-local budgets and measurements for each new student turn.
+        state["llm_calls_used"] = 0
+        state["tool_calls_used"] = 0
+        state["budget_exhausted"] = False
+        state["node_timings_ms"] = {}
+        state["retrieved_context"] = None
 
         # Properly clear messages using RemoveMessage
         existing_messages = state.get("messages") or []
