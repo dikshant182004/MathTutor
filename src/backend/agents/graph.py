@@ -164,6 +164,8 @@ def _run_tool_node(state: AgentState) -> dict:
 
 
 def _route_after_safety(state: AgentState):
+    if state.get("budget_exhausted"):
+        return "END"
     """safety_agent -> [explainer_agent | hitl_node | END]
  
     solve/hint/formula_lookup path : safety -> explainer_agent
@@ -401,12 +403,13 @@ class MathTutorWorkflow(
         graph.add_node("solver_agent", timed_node("solver_agent", self.solver_agent, model_node=True))
         graph.add_node("tool_node", timed_node("tool_node", _run_tool_node))
         graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent, model_node=True))
-        graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent))
+        graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent, model_node=True))
         graph.add_node("explainer_agent", timed_node("explainer_agent", self.explainer_agent, model_node=True))
         graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent, model_node=True))
         graph.add_node("hitl_node", timed_node("hitl_node", self.hitl_node))
         graph.add_node("store_ltm", timed_node("store_ltm", _store_ltm_node))
         graph.add_node("budget_stop_node", lambda state: {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."})
+        graph.add_edge("budget_stop_node", END)
 
         # ── Entry ──────────────────────────────────────────────────────────────
         graph.set_entry_point("detect_input")
@@ -461,7 +464,8 @@ class MathTutorWorkflow(
             _route_after_verifier,
             {"safety_agent":  "safety_agent",
              "solver_agent":  "solver_agent",
-             "hitl_node":     "hitl_node"},
+             "hitl_node":     "hitl_node",
+             "END": END},
         )
 
         # safety -> [explainer | END]
