@@ -1,5 +1,6 @@
 from __future__ import annotations
 import importlib.util
+import sys
 from pathlib import Path
 import pytest
 SRC = Path(__file__).resolve().parents[2]
@@ -7,6 +8,7 @@ PATH = SRC / "backend/agents/nodes/tools/calculator.py"
 spec = importlib.util.spec_from_file_location("calculator_under_test", PATH)
 calculator = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
+sys.modules[spec.name] = calculator
 spec.loader.exec_module(calculator)
 _safe_calculator_expression = calculator._safe_calculator_expression
 @pytest.mark.parametrize(("expression","expected"), [("2 + 2","4.00000000000000"),("factorial(5)","120.000000000000"),("x + 1","x + 1")])
