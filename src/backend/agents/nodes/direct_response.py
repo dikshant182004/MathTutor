@@ -155,7 +155,7 @@ class DirectResponseAgent(BaseAgent):
                 search_query = f"{topic} {problem_text[:100]}"
                 logger.info(f"[DirectResponse] Tavily search (research): {search_query[:100]}")
                 if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
-                    return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."}
+                    return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request.", "llm_calls_made": 0}
                 tool_calls_used += 1
                 tool_signals.append({"name": "web_search_tool", "args": {"query": search_query}})
                 web_context = _web_search(search_query)
@@ -277,6 +277,7 @@ class DirectResponseAgent(BaseAgent):
                 "agent_payload_log":          state.get("agent_payload_log") or [],
                 "direct_response_tool_calls": tool_signals,
                 "tool_calls_used": tool_calls_used,
+                "llm_calls_made": 1,
             }
  
         except Exception as e:
