@@ -88,7 +88,7 @@ def test_safety_model_id_is_allowlisted():
     assert resolve_model_id("safety") == GPT_OSS_SAFEGUARD_20B
 
 
-@pytest.mark.live_smoke
+@pytest.mark.unit
 def test_live_structured_output_smoke_all_profiles():
     from pydantic import BaseModel, Field
 
