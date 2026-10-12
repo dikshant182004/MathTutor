@@ -16,6 +16,8 @@ def deterministic_equation_check(problem: str, final_answer: str) -> dict | None
     if not problem or not final_answer or len(problem) > 500 or len(final_answer) > 200:
         return None
     # Restrict this check to elementary arithmetic and x/y/z; no function calls or attributes.
+    if problem.count("=") != 1:
+        return None
     candidates = re.findall(r"([0-9xyzXYZ+*/().^=\-\s]{3,})", problem)
     equations = [item.strip() for item in candidates if item.count("=") == 1]
     if not equations:
