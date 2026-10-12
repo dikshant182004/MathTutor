@@ -4,6 +4,7 @@ Checked on 2026-10-12. Versions newer than 14 days were not selected, per the im
 
 | Package | Pin | Reason |
 |---|---:|---|
+| langgraph-prebuilt | 1.1.0 | Required by LangGraph 1.2.12 (which declares langgraph-prebuilt>=1.1.0,<1.2.0); the 1.1.0 release is older than 14 days. |
 | langgraph | 1.2.12 | Stable release published 2026-09-21; selected instead of 1.2.14 published 2026-10-06. |
 | langchain-core | 1.6.5 | Stable release published 2026-09-24; selected instead of releases published 2026-09-29 onward. |
 | langchain-groq | 1.1.3 | Latest stable release found; published 2026-06-10. Supports ChatGroq structured-output and reasoning-effort parameters. |
