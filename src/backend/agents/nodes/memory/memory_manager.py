@@ -554,7 +554,9 @@ def memory_manager_node(state: dict) -> dict:
         problem_text    = parsed.get("problem_text") or ""
         final_answer    = solver_out.get("final_answer") or ""
         solve_attempts  = state.get("solve_iterations") or 1
-        verifier_status = verifier_out.get("status") or "incorrect"
+        verifier_status = verifier_out.get("status") or "unverified"
+        if verifier_status not in {"correct", "incorrect", "partially_correct", "needs_human"}:
+            verifier_status = "unverified"
         strategy        = plan.get("solver_strategy") or ""
         suggested_fix   = verifier_out.get("suggested_fix") or ""
 
@@ -572,9 +574,10 @@ def memory_manager_node(state: dict) -> dict:
         # reachable after verifier says "correct" — so outcome is always "correct"
         # at this point for the solver flow.
         outcome = (
-            "correct"   if verifier_status == "correct"      else
-            "hitl"      if verifier_status == "needs_human"  else
-            "incorrect"
+            "correct"     if verifier_status == "correct" else
+            "hitl"        if verifier_status == "needs_human" else
+            "incorrect"   if verifier_status in {"incorrect", "partially_correct"} else
+            "unverified"
         )
 
         # ── Episodic: store for all flows, but only when topic is known ────────
@@ -594,7 +597,7 @@ def memory_manager_node(state: dict) -> dict:
             )
 
         # ── Semantic + Procedural: solver flow only ───────────────────────────
-        if topic and is_solver_flow:
+        if topic and is_solver_flow and outcome in {"correct", "incorrect"}:
             # STRUGGLE SIGNAL: if outcome is correct but it took >1 attempt,
             # the student genuinely struggled with this topic. We write one
             # "incorrect" pass first to increment weak_topics, then write the
