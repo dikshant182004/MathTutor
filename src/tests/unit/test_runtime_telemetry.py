@@ -29,3 +29,26 @@ def test_learning_evidence_only_marks_verified_answer_correct():
     }
     assert learning_evidence({**base, "verifier_output": {"status": "needs_human"}})["outcome"] == "unverified"
     assert learning_evidence({**base, "verifier_output": {"status": "incorrect"}})["outcome"] == "incorrect"
+
+
+def test_timed_node_records_duration_and_counts_model_node_invocation():
+    from backend.agents.runtime_telemetry import timed_node
+
+    result = timed_node("fake_model", lambda state: {"ok": True}, model_node=True)(
+        {"node_timings_ms": {}, "llm_calls_used": 0, "max_llm_calls": 2}
+    )
+    assert result["ok"] is True
+    assert result["llm_calls_used"] == 1
+    assert result["node_timings_ms"]["fake_model"] >= 0
+
+
+def test_model_budget_stops_before_invoking_node():
+    from backend.agents.runtime_telemetry import timed_node
+
+    called = []
+    result = timed_node("fake_model", lambda state: called.append(True) or {"ok": True}, model_node=True)(
+        {"node_timings_ms": {}, "llm_calls_used": 1, "max_llm_calls": 1}
+    )
+    assert called == []
+    assert result["budget_exhausted"] is True
+    assert "budget" in result["final_response"].lower()
