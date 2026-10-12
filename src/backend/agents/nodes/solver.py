@@ -215,6 +215,7 @@ class SolverAgent(BaseAgent):
             difficulty    = plan.get("difficulty", "medium")
             topic         = parsed.get("topic") or ""
             iteration     = state.get("solve_iterations", 0)
+            llm_calls_made = 0
             thread_id     = state.get("thread_id") or ""
             human_fb      = state.get("human_feedback") or ""
             prev_verifier = state.get("verifier_output") or {}
@@ -284,6 +285,7 @@ class SolverAgent(BaseAgent):
             response = self._bind_tools(
                 rag_available, thread_id, rag_already_called, is_retry
             ).invoke(messages)
+            llm_calls_made += 1
 
             updates: dict = {"messages": [response]}
 
@@ -294,6 +296,7 @@ class SolverAgent(BaseAgent):
                 has_only_rag = all("rag" in n.lower() for n in tool_names)
                 if not has_only_rag:
                     return {
+                        "llm_calls_made": llm_calls_made,
                         **updates,
                         "agent_payload_log": state.get("agent_payload_log") or [],
                     }
@@ -325,11 +328,13 @@ class SolverAgent(BaseAgent):
                     rag_already_called=True,
                     is_retry=False,
                 ).invoke(messages_for_call2)
+                llm_calls_made += 1
 
                 if getattr(response2, "tool_calls", None):
                     tool_names2 = [tc["name"] for tc in response2.tool_calls]
                     logger.info(f"[Solver] LLM Call 2 tool calls: {tool_names2}")
                     return {
+                        "llm_calls_made": llm_calls_made,
                         "messages": messages_for_call2 + [response2],
                         "agent_payload_log": state.get("agent_payload_log") or [],
                     }
@@ -341,6 +346,7 @@ class SolverAgent(BaseAgent):
             if not solution_text.strip():
                 logger.warning("[Solver] Empty solution text after tool loop — forcing retry signal")
                 return {
+                        "llm_calls_made": llm_calls_made,
                     "solve_iterations": iteration + 1,
                     "agent_payload_log": state.get("agent_payload_log") or [],
                     "solver_output": {
@@ -397,6 +403,7 @@ class SolverAgent(BaseAgent):
                 f"| calc={calc_used} | rag={rag_used} | web={web_used}"
             )
             return {
+                        "llm_calls_made": llm_calls_made,
                 "messages":         [response],
                 "solve_iterations": iteration + 1,
                 "agent_payload_log": state.get("agent_payload_log") or [],
