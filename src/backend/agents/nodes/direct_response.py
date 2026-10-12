@@ -6,8 +6,7 @@ from backend.agents.utils.helper import _parse_xml_response
 from backend.agents.nodes.memory.memory_manager import format_ltm_for_explainer
 from backend.agents.nodes.tools.tools import web_search_tool as _ws_tool
 
-tool_signals: list = []
- 
+
 def _web_search(query: str) -> str:
     """
     Call web_search_tool's underlying Tavily function directly.
@@ -144,7 +143,9 @@ class DirectResponseAgent(BaseAgent):
             ltm_context   = state.get("ltm_context") or {}
             ltm_hint      = format_ltm_for_explainer(ltm_context, topic)
 
-            tool_signals.clear()  # ← wipe signals from any previous call
+            # Request-local signals avoid cross-request leakage under concurrent sessions.
+            tool_signals: list = []
+            tool_calls_used = int(state.get("tool_calls_used") or 0)
  
             # ── Web search for research / generate intents ────────────────────
             web_context  = ""
@@ -153,6 +154,9 @@ class DirectResponseAgent(BaseAgent):
             if intent_type == "research":
                 search_query = f"{topic} {problem_text[:100]}"
                 logger.info(f"[DirectResponse] Tavily search (research): {search_query[:100]}")
+                if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
+                    return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."}
+                tool_calls_used += 1
                 tool_signals.append({"name": "web_search_tool", "args": {"query": search_query}})
                 web_context = _web_search(search_query)
                 logger.info(f"[DirectResponse] Web context: {len(web_context)} chars")
@@ -160,6 +164,9 @@ class DirectResponseAgent(BaseAgent):
             elif intent_type == "generate":
                 search_query = f"{topic} {difficulty} practice problems {problem_text[:60]}"
                 logger.info(f"[DirectResponse] Tavily search (generate): {search_query[:100]}")
+                if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
+                    return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."}
+                tool_calls_used += 1
                 tool_signals.append({"name": "web_search_tool", "args": {"query": search_query}})
                 web_context = _web_search(search_query)
                 logger.info(f"[DirectResponse] Web context: {len(web_context)} chars")
@@ -269,6 +276,7 @@ class DirectResponseAgent(BaseAgent):
                 "student_satisfied":  None,
                 "agent_payload_log":          state.get("agent_payload_log") or [],
                 "direct_response_tool_calls": tool_signals,
+                "tool_calls_used": tool_calls_used,
             }
  
         except Exception as e:
