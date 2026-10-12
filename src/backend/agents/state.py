@@ -148,6 +148,5 @@ def make_initial_state(
         "llm_calls_used":      0,
         "tool_calls_used":     0,
         "budget_exhausted":    False,
-        "retrieved_context":   None,
     })
  
