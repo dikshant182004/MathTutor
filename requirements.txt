@@ -7,7 +7,7 @@ groq==0.37.1                        # Groq SDK (Whisper ASR via groq.audio)
 langgraph==1.2.12                   # StateGraph, interrupt, Command, ToolNode
 langgraph-checkpoint==4.0.1         # Base checkpoint interface
 langgraph-checkpoint-redis==0.5.2   # RedisSaver for STM persistence
-langgraph-prebuilt==1.0.8           # ToolNode prebuilt
+langgraph-prebuilt==1.1.0           # ToolNode prebuilt
 langgraph-sdk==0.3.9                # LangGraph SDK
 
 # ── LangChain Core Stack ───────────────────────────────────────────────────────
