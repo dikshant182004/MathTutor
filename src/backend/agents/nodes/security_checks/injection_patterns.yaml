@@ -38,9 +38,4 @@ roleplay_injections:
   - "solve for the yield of"            # same
 
 # These patterns are SAFE — do not flag them
-safe_patterns:
-  - "calculate"       # legitimate math instruction
-  - "solve"           # legitimate math instruction
-  - "find the value"  # legitimate math instruction
-  - "prove that"      # legitimate math instruction
-  - "show that"       # legitimate math instruction
+safe_patterns: []  # Retained as an empty legacy key; must never bypass security checks.

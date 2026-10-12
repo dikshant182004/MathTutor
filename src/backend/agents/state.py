@@ -19,6 +19,12 @@ class AgentState(TypedDict):
     asr_confidence:  Optional[float] 
     user_corrected_text: Optional[str]
 
+    prefilter_passed: Optional[bool]
+    cleaned_problem: Optional[str]
+    complexity: Optional[str]
+    intake_output: Optional[dict]
+    route: Optional[str]
+    route_reason: Optional[str]
     parsed_data:        Optional[dict]           # ParserOutput
     solution_plan:      Optional[dict]           # IntentRouterOutput
     retrieved_context:  Optional[str]
@@ -95,6 +101,12 @@ def make_initial_state(
         "guardrail_reason":    None,
  
         # Parsing & routing
+        "prefilter_passed":    None,
+        "cleaned_problem":     None,
+        "complexity":          None,
+        "intake_output":       None,
+        "route":               None,
+        "route_reason":        None,
         "parsed_data":         None,
         "solution_plan":       None,
         "retrieved_context":   None, 

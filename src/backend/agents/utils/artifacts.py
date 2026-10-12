@@ -43,6 +43,34 @@ class IntentRouterOutput(BaseModel):
         return _coerce_bools(data, bool_fields=set())
     
 
+class IntakeOutput(BaseModel):
+    safe: bool = Field(..., description="Whether the request is safe and within the math tutor scope.")
+    block_reason: Optional[str] = None
+    student_message: Optional[str] = None
+    cleaned_problem: str
+    variables: List[str] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    topic: str
+    difficulty: str
+    solver_strategy: str
+    intent: str
+    complexity: str
+    needs_clarification: bool = False
+    clarification_reason: Optional[str] = None
+    needs_web: bool = False
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_categories(self) -> "IntakeOutput":
+        if self.difficulty not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium or hard")
+        if self.intent not in {"solve", "explain", "hint", "formula_lookup", "research", "generate"}:
+            raise ValueError("unsupported intent")
+        if self.complexity not in {"trivial", "standard", "hard"}:
+            raise ValueError("unsupported complexity")
+        return self
+
+
 class VerifierOutput(BaseModel):
 
     status: str = Field(..., description="correct | incorrect | partially_correct | needs_human")

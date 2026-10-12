@@ -8,9 +8,9 @@ from backend.agents import Agent_Exception, logger, sys, _MEDIA_CONF_THRESHOLD
 from backend.agents.state import AgentState
 
 from backend.agents.nodes.input import asr_node, detect_input_type, ocr_node
-from backend.agents.nodes.guardrail import GuardrailAgent
-from backend.agents.nodes.parser import ParserAgent
-from backend.agents.nodes.router import IntentRouterAgent
+from backend.agents.nodes.prefilter import prefilter_node
+from backend.agents.nodes.intake import IntakeAgent
+from backend.agents.routing_policy import route_with_reason
 from backend.agents.nodes.solver import SolverAgent
 from backend.agents.nodes.verifier import VerifierAgent
 from backend.agents.nodes.safety import SafetyAgent
@@ -43,7 +43,7 @@ def _route_after_detect(state: AgentState) -> str:
         return "ocr_node"
     if mode == "audio":
         return "asr_node"
-    return "guardrail_agent"
+    return "prefilter"
 
 
 def _route_after_ocr(state: AgentState) -> str:
@@ -317,9 +317,7 @@ def _asr_node_with_confidence_gate(state: AgentState) -> AgentState:
 # ── Workflow class ─────────────────────────────────────────────────────────────
 
 class MathTutorWorkflow(
-    GuardrailAgent,
-    ParserAgent,
-    IntentRouterAgent,
+    IntakeAgent,
     SolverAgent,
     VerifierAgent,
     SafetyAgent,
@@ -334,6 +332,11 @@ class MathTutorWorkflow(
         self.app = graph.compile(checkpointer=self.checkpointer)
         logger.info("[Graph] MathTutorWorkflow compiled successfully")
 
+    def _route_intake(self, state: AgentState) -> str:
+        target, reason = route_with_reason(state)
+        logger.info("[RoutingPolicy] target=%s reason=%s", target, reason)
+        return target
+
     def _create_workflow(self) -> StateGraph:
         graph = StateGraph(AgentState)
 
@@ -341,10 +344,10 @@ class MathTutorWorkflow(
         graph.add_node("detect_input",          detect_input_type)
         graph.add_node("ocr_node",              _ocr_node_with_confidence_gate)
         graph.add_node("asr_node",              _asr_node_with_confidence_gate)
-        graph.add_node("guardrail_agent",       self.guardrail_agent)
+        graph.add_node("prefilter",             prefilter_node)
+        graph.add_node("intake",                self.intake_node)
         graph.add_node("retrieve_ltm",          _retrieve_ltm_node)
-        graph.add_node("parser_agent",          self.parser_agent)
-        graph.add_node("intent_router",         self.intent_router_agent)
+
         graph.add_node("solver_agent",          self.solver_agent)
         graph.add_node("tool_node",             ToolNode(SOLVER_TOOLS))
         graph.add_node("verifier_agent",        self.verifier_agent)
@@ -362,46 +365,33 @@ class MathTutorWorkflow(
             "detect_input",
             _route_after_detect,
             {"ocr_node": "ocr_node", "asr_node": "asr_node",
-             "guardrail_agent": "guardrail_agent", "hitl_node": "hitl_node"},
+             "prefilter": "prefilter", "hitl_node": "hitl_node"},
         )
 
         graph.add_conditional_edges(
             "ocr_node",
             _route_after_ocr,
-            {"guardrail_agent": "guardrail_agent", "hitl_node": "hitl_node"},
+            {"prefilter": "prefilter", "hitl_node": "hitl_node"},
         )
         graph.add_conditional_edges(
             "asr_node",
             _route_after_asr,
-            {"guardrail_agent": "guardrail_agent", "hitl_node": "hitl_node"},
+            {"prefilter": "prefilter", "hitl_node": "hitl_node"},
         )
 
-        # guardrail -> [parser_agent | END]
+        # Deterministic prefilter -> one structured intake call -> pure routing policy.
         graph.add_conditional_edges(
-            "guardrail_agent",
-            _route_after_guardrail,
-            {"parser_agent": "parser_agent", "END": END},
+            "prefilter",
+            lambda state: "intake" if state.get("prefilter_passed") is not False else "END",
+            {"intake": "intake", "END": END},
         )
-
-        # parser -> [hitl | retrieve_ltm]
         graph.add_conditional_edges(
-            "parser_agent",
-            _route_after_parser,
-            {"hitl_node": "hitl_node", "retrieve_ltm": "retrieve_ltm"},
+            "intake",
+            self._route_intake,
+            {"END": END, "hitl_node": "hitl_node", "direct_response_node": "direct_response_node",
+             "solver_agent": "solver_agent", "retrieve_ltm": "retrieve_ltm"},
         )
-
-        # retrieve_ltm -> intent_router
-        graph.add_edge("retrieve_ltm", "intent_router")
-
-        # intent_router -> [solver_agent | direct_response_node]
-        graph.add_conditional_edges(
-            "intent_router",
-            _route_after_intent_router,
-            {
-                "solver_agent":         "solver_agent",
-                "direct_response_node": "direct_response_node",
-            },
-        )
+        graph.add_edge("retrieve_ltm", "solver_agent")
 
         # direct_response_node -> safety_agent (same safety check as solve path)
         graph.add_edge("direct_response_node", "safety_agent")
@@ -438,7 +428,7 @@ class MathTutorWorkflow(
             _route_after_hitl,
             {
                 "detect_input":         "detect_input",
-                "guardrail_agent":      "guardrail_agent",
+                "guardrail_agent":      "prefilter",
                 "solver_agent":         "solver_agent",
                 "safety_agent":         "safety_agent",
                 "explainer_agent":      "explainer_agent",

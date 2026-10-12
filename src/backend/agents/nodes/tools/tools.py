@@ -349,42 +349,78 @@ def web_search_tool(query: str) -> str:
 #  TOOL 3 — SYMBOLIC CALCULATOR  (SymPy)
 # ══════════════════════════════════════════════════════════════════════════════
 
+_CALCULATOR_GLOBALS = {
+    "__builtins__": {},
+    "Symbol": sp.Symbol, "Integer": sp.Integer, "Float": sp.Float,
+    "Rational": sp.Rational, "Add": sp.Add, "Mul": sp.Mul, "Pow": sp.Pow,
+    "Tuple": sp.Tuple, "Matrix": sp.Matrix, "ImmutableDenseMatrix": sp.ImmutableDenseMatrix,
+    "factorial": sp.factorial, "binomial": sp.binomial, "sqrt": sp.sqrt,
+    "sin": sp.sin, "cos": sp.cos, "tan": sp.tan, "asin": sp.asin, "acos": sp.acos,
+    "atan": sp.atan, "log": sp.log, "exp": sp.exp, "Abs": sp.Abs,
+    "Min": sp.Min, "Max": sp.Max, "pi": sp.pi, "E": sp.E,
+}
+_CALCULATOR_NAMES = set(_CALCULATOR_GLOBALS) - {"__builtins__", "Symbol", "Integer", "Float", "Rational", "Add", "Mul", "Pow", "Tuple", "ImmutableDenseMatrix"}
+_CALCULATOR_SYMBOLS = {"x", "y", "z", "n", "a", "b", "c", "t", "r", "theta"}
+
+def _calculator_worker(expression: str, result_queue) -> None:
+    """Evaluate in a child process so expensive symbolic work can be terminated."""
+    try:
+        from sympy.parsing.sympy_parser import parse_expr, standard_transformations, convert_xor, implicit_multiplication_application
+        local = {name: value for name, value in _CALCULATOR_GLOBALS.items() if name != "__builtins__"}
+        for name in _CALCULATOR_SYMBOLS:
+            local[name] = sp.Symbol(name)
+        parsed = parse_expr(expression, local_dict=local, global_dict=_CALCULATOR_GLOBALS,
+            transformations=standard_transformations + (convert_xor, implicit_multiplication_application), evaluate=True)
+        result_queue.put(("ok", str(parsed) if isinstance(parsed, sp.MatrixBase) else str(sp.N(parsed))))
+    except BaseException as exc:
+        result_queue.put(("error", f"Invalid or unsupported expression ({type(exc).__name__})."))
+
+def _safe_calculator_expression(expression: str, timeout_seconds: float = 5.0) -> str:
+    """Validate a small allowlisted expression language and enforce a hard timeout."""
+    import multiprocessing
+    import re
+    if not isinstance(expression, str) or not expression.strip():
+        raise ValueError("Expression must be a non-empty string.")
+    expression = expression.strip()
+    if len(expression) > 500:
+        raise ValueError("Expression exceeds the 500-character limit.")
+    if "__" in expression or re.search(r"[{};\\`]", expression):
+        raise ValueError("Expression contains disallowed syntax.")
+    if "." in expression and not re.search(r"\)\.(?:det|inv|eigenvals)\(\)\s*$", expression):
+        raise ValueError("Attribute access is not allowed.")
+    names = set(re.findall(r"[A-Za-z_]\w*", expression))
+    allowed = _CALCULATOR_NAMES | _CALCULATOR_SYMBOLS | {"Matrix", "det", "inv", "eigenvals"}
+    if names - allowed:
+        raise ValueError("Expression contains an unknown function or name.")
+    if re.search(r"\.(?!det\(\)|inv\(\)|eigenvals\(\))", expression):
+        raise ValueError("Attribute access is not allowed.")
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(target=_calculator_worker, args=(expression, result_queue), daemon=True)
+    process.start()
+    process.join(timeout_seconds)
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        raise ValueError("Calculation exceeded the 5-second time limit.")
+    if result_queue.empty():
+        raise ValueError("Calculator process failed without a result.")
+    status, value = result_queue.get()
+    result_queue.close()
+    if status != "ok":
+        raise ValueError(value)
+    return value
+
 @tool
 def calculator_tool(expression: str) -> str:
-    """
-    Symbolic mathematics calculator (SymPy backend). Use SPARINGLY.
-
-    The solver LLM handles ALL routine JEE-level computation itself.
-    Only call this for these three narrow cases:
-
-      1. Very large factorials / combinatorics  e.g. C(50,25), 100!
-      2. High-precision decimal results the problem explicitly asks for
-      3. Large matrix operations (det, inverse, eigenvalues)
-
-    DO NOT CALL for: basic arithmetic, trig identities, standard integrals,
-    derivatives, or probability fractions. These add zero value.
-
-    Valid SymPy expression syntax:
-      "binomial(50, 25)"
-      "factorial(100)"
-      "N(integrate(1/sqrt(1-x**2), x), 50)"    ← 50-digit precision
-      "Matrix([[1,2,3],[4,5,6],[7,8,9]]).det()"
-
-    Args:
-        expression: A valid SymPy expression string.
-
-    Returns:
-        Numeric or symbolic result as a string.
-    """
+    """Evaluate a bounded, allowlisted symbolic expression in a worker process (5 s timeout)."""
     try:
-        expr   = sp.sympify(expression)
-        result = sp.N(expr)
-        logger.info(
-            f"[Calculator] {expression[:60]} → {str(result)[:60]}"
-        )
-        return str(result)
+        result = _safe_calculator_expression(expression)
+        logger.info("[Calculator] expression_length=%s completed", len(expression))
+        return result
     except Exception as exc:
-        return f"Calculator error: {exc}. Check SymPy expression syntax."
+        logger.warning("[Calculator] rejected or failed expression: %s", type(exc).__name__)
+        return f"Calculator error: {exc}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

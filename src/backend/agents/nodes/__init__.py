@@ -8,6 +8,7 @@ from backend.agents.utils.artifacts import (
     ExplainerOutput,
     GuardrailOutput,
     SafetyOutput,
+    IntakeOutput,
 )
 from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
 
@@ -23,7 +24,7 @@ _HARD_BLOCK_KEYWORDS = [
 __all__ = [
     "BaseAgent", "AgentState", "payload", "render_md", "_HARD_BLOCK_KEYWORDS",
     "ParserOutput", "IntentRouterOutput", "VerifierOutput", "ExplainerOutput",
-    "GuardrailOutput", "SafetyOutput",
+    "GuardrailOutput", "SafetyOutput", "IntakeOutput",
     "rag_tool", "web_search_tool", "calculator_tool"
 ]
 
