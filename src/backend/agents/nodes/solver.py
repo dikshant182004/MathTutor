@@ -322,6 +322,18 @@ class SolverAgent(BaseAgent):
                     HumanMessage(content=rag_context_block),
                 ]
 
+                if (
+                    int(state.get("llm_calls_used") or 0) + llm_calls_made
+                    >= int(state.get("max_llm_calls") or 8)
+                ):
+                    return {
+                        "llm_calls_made": llm_calls_made,
+                        "budget_exhausted": True,
+                        "final_response": (
+                            "This request reached its configured model-call budget. "
+                            "Please narrow the question or start a new request."
+                        ),
+                    }
                 response2 = self._bind_tools(
                     rag_available=False,   # forces _TOOLS_NO_RAG regardless of PDF
                     thread_id=thread_id,
