@@ -18,3 +18,4 @@ def test_deterministic_verifier_declines_unsupported_or_ambiguous_input():
     assert deterministic_equation_check("Explain the quadratic formula", "x = 1") is None
     assert deterministic_equation_check("x^2 = 4", "x = 2") is None
     assert deterministic_equation_check("x + 1 = 2; y + 2 = 4", "x = 1") is None
+    assert deterministic_equation_check("x^999999 = 1", "x = 1") is None
