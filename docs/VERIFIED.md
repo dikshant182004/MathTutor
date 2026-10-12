@@ -2,8 +2,9 @@
 
 Last checked: 2026-10-12 against official provider documentation.
 
-## Vercel Python runtime and request lifecycle
+## Vercel FastAPI entrypoint, Python runtime and request lifecycle
 
+- FastAPI detection: export a FastAPI instance named app at a supported entrypoint such as app.py, index.py, server.py, main.py, wsgi.py, or asgi.py at the project root or under src/, app/, or api/. A custom module can be declared with tool.vercel.entrypoint in pyproject.toml. Source: https://vercel.com/docs/frameworks/backend/fastapi and https://vercel.com/kb/guide/ship-a-fastapi-app-on-vercel
 - Supported Python versions: 3.12 (default), 3.13, and 3.14. The project instructions choose Python 3.12 as its baseline. Source: https://vercel.com/docs/functions/runtimes/python
 - Function request/response body limit: 4.5 MB; oversized payloads return 413. Source: https://vercel.com/docs/functions/limitations and https://vercel.com/docs/errors/function_payload_too_large
 - Continuing work after a response: Vercel documents waitUntil for Node.js and Edge, and Next.js after() for Next.js handlers. The Python runtime page does not document an equivalent post-response continuation API. Per the implementation instruction, assume background work must not continue after the response; required work must be awaited before completing the response. Sources: https://vercel.com/docs/functions/functions-api-reference and https://vercel.com/docs/functions/runtimes/python
