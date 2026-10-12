@@ -1,12 +1,12 @@
 -e .
 # ── LLM Inference ─────────────────────────────────────────────────────────────
-langchain-groq==1.1.2               # ChatGroq client for LLaMA 3.3 70B
+langchain-groq==1.1.3               # ChatGroq client for LLaMA 3.3 70B
 groq==0.37.1                        # Groq SDK (Whisper ASR via groq.audio)
 
 # ── Agent Orchestration ────────────────────────────────────────────────────────
-langgraph==1.0.10                   # StateGraph, interrupt, Command, ToolNode
+langgraph==1.2.12                   # StateGraph, interrupt, Command, ToolNode
 langgraph-checkpoint==4.0.1         # Base checkpoint interface
-langgraph-checkpoint-redis==0.4.0   # RedisSaver for STM persistence
+langgraph-checkpoint-redis==0.5.2   # RedisSaver for STM persistence
 langgraph-prebuilt==1.0.8           # ToolNode prebuilt
 langgraph-sdk==0.3.9                # LangGraph SDK
 
@@ -14,7 +14,7 @@ langgraph-sdk==0.3.9                # LangGraph SDK
 langchain==1.2.10                   # High-level chain utilities
 langchain-classic==1.0.1            # Classic chain support
 langchain-community==0.4.1          # PyPDFLoader
-langchain-core==1.2.17              # BaseMessage, HumanMessage, AIMessage, etc.
+langchain-core==1.6.5              # BaseMessage, HumanMessage, AIMessage, etc.
 langchain-text-splitters==1.1.1     # RecursiveCharacterTextSplitter
 langsmith==0.7.12                   # LangChain tracing (required by langchain-core)
 
@@ -22,7 +22,7 @@ langsmith==0.7.12                   # LangChain tracing (required by langchain-c
 cohere==5.20.7                      # embed-english-v3.0 for RAG + episodic LTM
 faiss-cpu==1.13.2                   # FAISS IndexFlatIP for dense retrieval
 rank-bm25==0.2.2                    # BM25Okapi for sparse retrieval
-redisvl==0.16.0                     # RedisVL HNSW vector index for episodic LTM
+redisvl==0.27.2                     # RedisVL HNSW vector index for episodic LTM
 
 # ── Database ───────────────────────────────────────────────────────────────────
 redis==7.3.0                        # Redis client for STM + LTM
@@ -53,9 +53,8 @@ grpcio-status==1.78.0               # gRPC status codes
 streamlit==1.55.0                   # Streamlit web UI
 
 # ── Pydantic & Validation ──────────────────────────────────────────────────────
-pydantic==2.12.5                    # Structured output schemas
+pydantic==2.13.5                    # Structured output schemas
 pydantic-settings==2.13.1           # Settings management
-pydantic_core==2.41.5               # Pydantic C core
 
 # ── Configuration & Environment ───────────────────────────────────────────────
 python-dotenv==1.2.2                # Load .env files
