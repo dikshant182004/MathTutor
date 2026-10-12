@@ -3,6 +3,8 @@ from __future__ import annotations
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from concurrent.futures import ThreadPoolExecutor
+from backend.agents.runtime_telemetry import timed_node, budget_limits, learning_evidence
 
 from backend.agents import Agent_Exception, logger, sys, _MEDIA_CONF_THRESHOLD
 from backend.agents.state import AgentState
@@ -175,7 +177,17 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         if state.get("user_corrected_text") and not state.get("raw_text"):
             state["raw_text"] = state["user_corrected_text"]
         state["ltm_mode"] = "retrieve"
-        out = memory_manager_node(state)
+        plan = state.get("solution_plan") or {}
+        parsed = state.get("parsed_data") or {}
+        needs_web = bool(plan.get("needs_web"))
+        query = str(parsed.get("problem_text") or plan.get("topic") or "").strip()[:500]
+        # Student memory retrieval and optional web retrieval are independent; run concurrently.
+        with ThreadPoolExecutor(max_workers=2 if needs_web and query else 1) as pool:
+            memory_future = pool.submit(memory_manager_node, state)
+            web_future = pool.submit(web_search_tool.invoke, {"query": query}) if needs_web and query else None
+            out = memory_future.result()
+            web_context = web_future.result() if web_future else ""
+        state["retrieved_context"] = str(web_context or "")[:12000]
 
         # ── Build payload for activity panel ──────────────────────────────
         ltm = out.get("ltm_context") or {}
@@ -233,6 +245,7 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         return {
             "ltm_mode": "retrieve",
             **out,
+            "retrieved_context": state.get("retrieved_context") or "",
             "agent_payload_log": state.get("agent_payload_log") or [],
         }
     except Exception as e:
@@ -250,10 +263,11 @@ def _store_ltm_node(state: AgentState) -> dict:
         plan         = state.get("solution_plan") or {}
         verifier_out = state.get("verifier_output") or {}
         solver_out   = state.get("solver_output") or {}
+        evidence = learning_evidence(state)
 
         topic      = parsed.get("topic") or "—"
         difficulty = plan.get("difficulty") or "—"
-        outcome    = verifier_out.get("status") or "—"
+        outcome    = evidence["outcome"]
         answer     = solver_out.get("final_answer") or "—"
         attempts   = state.get("solve_iterations") or 1
 
@@ -341,21 +355,22 @@ class MathTutorWorkflow(
         graph = StateGraph(AgentState)
 
         # ── Nodes ──────────────────────────────────────────────────────────────
-        graph.add_node("detect_input",          detect_input_type)
-        graph.add_node("ocr_node",              _ocr_node_with_confidence_gate)
-        graph.add_node("asr_node",              _asr_node_with_confidence_gate)
-        graph.add_node("prefilter",             prefilter_node)
-        graph.add_node("intake",                self.intake_node)
-        graph.add_node("retrieve_ltm",          _retrieve_ltm_node)
+        # Instrument actual wall-clock time for each node; timings are cumulative per request.
+        graph.add_node("detect_input", timed_node("detect_input", detect_input_type))
+        graph.add_node("ocr_node", timed_node("ocr_node", _ocr_node_with_confidence_gate))
+        graph.add_node("asr_node", timed_node("asr_node", _asr_node_with_confidence_gate))
+        graph.add_node("prefilter", timed_node("prefilter", prefilter_node))
+        graph.add_node("intake", timed_node("intake", self.intake_node))
+        graph.add_node("retrieve_ltm", timed_node("retrieve_ltm", _retrieve_ltm_node))
 
-        graph.add_node("solver_agent",          self.solver_agent)
-        graph.add_node("tool_node",             ToolNode(SOLVER_TOOLS))
-        graph.add_node("verifier_agent",        self.verifier_agent)
-        graph.add_node("safety_agent",          self.safety_agent)
-        graph.add_node("explainer_agent",       self.explainer_agent)
-        graph.add_node("direct_response_node",  self.direct_response_agent)  # NEW
-        graph.add_node("hitl_node",             self.hitl_node)
-        graph.add_node("store_ltm",             _store_ltm_node)
+        graph.add_node("solver_agent", timed_node("solver_agent", self.solver_agent))
+        graph.add_node("tool_node", timed_node("tool_node", ToolNode(SOLVER_TOOLS)))
+        graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent))
+        graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent))
+        graph.add_node("explainer_agent", timed_node("explainer_agent", self.explainer_agent))
+        graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent))
+        graph.add_node("hitl_node", timed_node("hitl_node", self.hitl_node))
+        graph.add_node("store_ltm", timed_node("store_ltm", _store_ltm_node))
 
         # ── Entry ──────────────────────────────────────────────────────────────
         graph.set_entry_point("detect_input")
