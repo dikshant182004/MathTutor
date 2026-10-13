@@ -1,6 +1,7 @@
 """Authentication, ownership checks, and lazy runtime dependencies."""
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import time
@@ -75,7 +76,7 @@ def decode_access_token(token: str) -> str:
 def enforce_rate_limit(redis: Any, *, client_ip: str, student_id: str | None = None) -> None:
     """Use Redis counters so limits work across stateless API instances."""
     window = int(time.time() // 60)
-    ip_digest = __import__("hashlib").sha256((client_ip or "unknown").encode("utf-8")).hexdigest()[:16]
+    ip_digest = hashlib.sha256((client_ip or "unknown").encode("utf-8")).hexdigest()[:16]
     checks = [(f"rl:ip:{ip_digest}:{window}", 120)]
     if student_id:
         checks.append((f"rl:student:{student_id}:{window}", 60))
@@ -170,10 +171,6 @@ def check_thread_owner(redis: Any, thread_id: str, student_id: str) -> dict[str,
 
 
 def require_live_checkpoint(metadata: dict[str, str], snapshot: Any) -> None:
-    values = getattr(snapshot, "values", None) or {}
-    tasks = getattr(snapshot, "tasks", None) or ()
-    has_interrupt = any(getattr(task, "interrupts", None) for task in tasks)
-    has_checkpoint = bool(values) or bool(getattr(snapshot, "next", None)) or has_interrupt
     expiry = metadata.get("checkpoint_expires_at")
     try:
         expired = expiry is not None and float(expiry) <= time.time()
