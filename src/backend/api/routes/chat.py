@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.api.deps import (
-    CHECKPOINT_TTL_SECONDS, check_thread_owner, get_current_student,
+    CHECKPOINT_TTL_SECONDS, THREAD_TTL_SECONDS, check_thread_owner, get_current_student,
     get_graph_app, get_redis, require_live_checkpoint, thread_meta_key,
 )
 from backend.api.schemas import MessageRequest
@@ -79,6 +79,7 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
         now = time.time()
         meta_key = thread_meta_key(thread_id)
         redis.hset(meta_key, mapping={"last_active": now, "checkpoint_expires_at": now + CHECKPOINT_TTL_SECONDS})
+        redis.expire(meta_key, THREAD_TTL_SECONDS)
         if pending:
             redis.hset(meta_key, mapping={"pending_interrupt_id": pending.get("interrupt_id") or ""})
             yield encode_sse("interrupt", pending)
