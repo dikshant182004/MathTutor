@@ -23,7 +23,7 @@ IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60
 
 def _jwt_secret() -> str:
     secret = os.getenv("JWT_SECRET", "")
-    if len(secret) < 32:
+    if len(secret) < 32 or secret.lower().startswith(("replace-with-", "change-me-", "your-secret")):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "auth_not_configured", "message": "Authentication is not configured.", "retryable": False},
