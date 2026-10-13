@@ -74,6 +74,7 @@ async def _resume_stream(
         values = getattr(snapshot, "values", None) or {}
         now = time.time()
         redis.hset(thread_meta_key(thread_id), mapping={"last_active": now, "checkpoint_expires_at": now + CHECKPOINT_TTL_SECONDS})
+        redis.expire(thread_meta_key(thread_id), THREAD_TTL_SECONDS)
         pending = _interrupt_from_snapshot(snapshot, thread_id)
         if pending:
             redis.hset(thread_meta_key(thread_id), mapping={"pending_interrupt_id": pending.get("interrupt_id") or ""})
