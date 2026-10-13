@@ -10,6 +10,18 @@
 - **Phase D:** added a FastAPI application under `src/backend/api/`, Google ID-token verification and short-lived HS256 JWTs, authenticated thread endpoints, exact-origin CORS, SSE event streaming, same-thread LangGraph interrupt resume, and Redis SET-NX resume idempotency. API chat fails closed when a durable Redis checkpointer is unavailable; it does not silently use an in-memory checkpoint store.
 - **Phase D validation:** added API tests for invalid JWTs, cross-student thread access, expired checkpoints, a real LangGraph interrupt/resume, and duplicate resume replay. These tests still require a successful CI run before this phase can be marked validated.
 - **Known sequencing gap:** thread ownership currently uses both the student-prefixed thread ID and Redis metadata. The PDF's additional Postgres ownership lookup belongs to Phase E and is not implemented here.
+
+### Running the Phase D API locally
+
+Install the API dependencies and configure `GOOGLE_CLIENT_ID`, a cryptographically random `JWT_SECRET` (at least 32 characters), `REDIS_URL`, and exact comma-separated `ALLOWED_ORIGINS` values. The API intentionally returns a service-unavailable error rather than using an in-memory checkpointer when durable Redis checkpointing is unavailable.
+
+```powershell
+uv pip install -r requirements-api.txt
+$env:PYTHONPATH = "src"
+uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+```
+
+The API routes currently cover Google sign-in, allowed model profiles, Redis-backed thread management, streamed messages, and interrupt resume. Postgres-backed history/analytics, persistent per-student document retrieval, the new web frontend, and deployment remain later phases.
 - **Validation note:** live Google sign-in, Redis-backed API execution, deployed SSE behavior, and frontend integration still require environment-backed validation.
 
 ---
