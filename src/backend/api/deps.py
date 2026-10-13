@@ -94,6 +94,20 @@ def enforce_rate_limit(
             )
 
 
+def get_redis():
+    """Require the shared Redis service; API requests must not fall back to process memory."""
+    try:
+        from backend.agents.utils.db_utils import get_sync_client
+        client = get_sync_client()
+        client.ping()
+        return client
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "storage_unavailable", "message": "Persistent storage is unavailable.", "retryable": True},
+        ) from exc
+
+
 def get_current_student(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -111,20 +125,6 @@ def get_current_student(
     student_id = decode_access_token(credentials.credentials)
     enforce_rate_limit(redis, client_ip=client_ip, student_id=student_id, include_ip=False)
     return student_id
-
-
-def get_redis():
-    """Require the shared Redis service; API requests must not fall back to process memory."""
-    try:
-        from backend.agents.utils.db_utils import get_sync_client
-        client = get_sync_client()
-        client.ping()
-        return client
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "storage_unavailable", "message": "Persistent storage is unavailable.", "retryable": True},
-        ) from exc
 
 
 def get_graph_app():
