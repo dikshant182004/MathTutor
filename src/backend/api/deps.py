@@ -73,11 +73,13 @@ def decode_access_token(token: str) -> str:
     return student_id
 
 
-def enforce_rate_limit(redis: Any, *, client_ip: str, student_id: str | None = None) -> None:
+def enforce_rate_limit(
+    redis: Any, *, client_ip: str, student_id: str | None = None, include_ip: bool = True
+) -> None:
     """Use Redis counters so limits work across stateless API instances."""
     window = int(time.time() // 60)
     ip_digest = hashlib.sha256((client_ip or "unknown").encode("utf-8")).hexdigest()[:16]
-    checks = [(f"rl:ip:{ip_digest}:{window}", 120)]
+    checks = [(f"rl:ip:{ip_digest}:{window}", 120)] if include_ip else []
     if student_id:
         checks.append((f"rl:student:{student_id}:{window}", 60))
     for key, limit in checks:
@@ -97,6 +99,9 @@ def get_current_student(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     redis=Depends(get_redis),
 ) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    # Rate-limit even invalid/missing tokens so unauthenticated callers cannot bypass IP controls.
+    enforce_rate_limit(redis, client_ip=client_ip)
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -104,7 +109,7 @@ def get_current_student(
             headers={"WWW-Authenticate": "Bearer"},
         )
     student_id = decode_access_token(credentials.credentials)
-    enforce_rate_limit(redis, client_ip=request.client.host if request.client else "unknown", student_id=student_id)
+    enforce_rate_limit(redis, client_ip=client_ip, student_id=student_id, include_ip=False)
     return student_id
 
 
