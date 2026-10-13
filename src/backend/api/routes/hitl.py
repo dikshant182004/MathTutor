@@ -121,6 +121,25 @@ def resume_thread(
     graph=Depends(get_graph_app),
 ):
     metadata = check_thread_owner(redis, thread_id, student_id)
+    key = validate_idempotency_key(idempotency_key)
+    storage_key = f"idem:{thread_id}:{key}"
+
+    # Idempotency is checked before checkpoint state: a completed duplicate must
+    # replay its first result even after the graph has moved past the interrupt.
+    raw = redis.get(storage_key)
+    if raw:
+        try:
+            cached = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+        except (ValueError, TypeError):
+            cached = {}
+        if cached.get("status") in {"complete", "failed"}:
+            return StreamingResponse(
+                iter(cached.get("events") or []),
+                media_type="text/event-stream",
+                headers=sse_headers(),
+            )
+        raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
+
     config = {"configurable": {"thread_id": thread_id}}
     try:
         snapshot = graph.get_state(config)
@@ -130,8 +149,6 @@ def resume_thread(
     pending = _interrupt_from_snapshot(snapshot, thread_id)
     if not pending:
         raise HTTPException(status_code=409, detail={"code": "no_pending_interrupt", "message": "This thread has no pending interrupt to resume.", "retryable": False})
-    key = validate_idempotency_key(idempotency_key)
-    storage_key = f"idem:{thread_id}:{key}"
     reserved = redis.set(storage_key, json.dumps({"status": "processing"}), ex=IDEMPOTENCY_TTL_SECONDS, nx=True)
     if not reserved:
         raw = redis.get(storage_key)
@@ -139,7 +156,7 @@ def resume_thread(
             cached = json.loads(raw.decode() if isinstance(raw, bytes) else raw or "{}")
         except (ValueError, TypeError):
             cached = {}
-        if cached.get("status") == "complete":
+        if cached.get("status") in {"complete", "failed"}:
             return StreamingResponse(
                 iter(cached.get("events") or []),
                 media_type="text/event-stream",
