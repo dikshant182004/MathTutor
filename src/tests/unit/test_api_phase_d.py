@@ -88,6 +88,11 @@ class FakeRedis:
         self.ttls[name] = seconds
         return True
 
+    def incr(self, name):
+        value = int(self.strings.get(name, "0")) + 1
+        self.strings[name] = str(value)
+        return value
+
     def set(self, name, value, ex=None, nx=False):
         if nx and name in self.strings:
             return None
