@@ -5,9 +5,9 @@ import hashlib
 import os
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from backend.api.deps import get_redis, issue_access_token
+from backend.api.deps import enforce_rate_limit, get_redis, issue_access_token
 from backend.api.schemas import AuthResponse, GoogleAuthRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -21,7 +21,8 @@ def verify_google_id_token(id_token: str, client_id: str) -> dict:
 
 
 @router.post("/google", response_model=AuthResponse)
-def google_login(body: GoogleAuthRequest, redis=Depends(get_redis)) -> AuthResponse:
+def google_login(body: GoogleAuthRequest, request: Request, redis=Depends(get_redis)) -> AuthResponse:
+    enforce_rate_limit(redis, client_ip=request.client.host if request.client else "unknown")
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     if not client_id:
         raise HTTPException(
