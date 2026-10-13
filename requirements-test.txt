@@ -16,3 +16,4 @@ tiktoken
 fastapi==0.135.1
 PyJWT==2.11.0
 google-auth==2.48.0
+httpx==0.28.1
