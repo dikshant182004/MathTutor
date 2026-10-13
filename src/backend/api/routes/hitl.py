@@ -1,0 +1,153 @@
+"""Idempotent HITL resume on the exact checkpoint/thread that was interrupted."""
+from __future__ import annotations
+
+import json
+import time
+from typing import Any, AsyncIterator
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi.responses import StreamingResponse
+from langgraph.types import Command
+
+from backend.api.deps import (
+    CHECKPOINT_TTL_SECONDS, IDEMPOTENCY_TTL_SECONDS, check_thread_owner,
+    get_current_student, get_graph_app, get_redis, require_live_checkpoint,
+    thread_meta_key, validate_idempotency_key,
+)
+from backend.api.routes.chat import _interrupt_from_snapshot, graph_event_stream
+from backend.api.schemas import ResumeRequest
+from backend.api.sse import encode_sse, sse_headers
+
+router = APIRouter(prefix="/threads", tags=["hitl"])
+
+
+async def _resume_stream(
+    graph: Any, redis: Any, thread_id: str, metadata: dict[str, str],
+    response: dict, idempotency_storage_key: str,
+) -> AsyncIterator[str]:
+    events: list[str] = []
+    completed = False
+    config = {"configurable": {"thread_id": thread_id}}
+    try:
+        async for mode, chunk in graph.astream(
+            Command(resume=response),
+            config=config,
+            stream_mode=["updates", "messages", "custom"],
+        ):
+            if mode == "messages":
+                message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
+                content = getattr(message, "content", "")
+                if isinstance(content, str) and content:
+                    event = encode_sse("token", {"text": content})
+                    events.append(event)
+                    yield event
+            elif mode == "updates" and isinstance(chunk, dict):
+                for node_name, update in chunk.items():
+                    if isinstance(update, dict):
+                        event = encode_sse("node", {"name": str(node_name), "status": "complete"})
+                        events.append(event)
+                        yield event
+            elif mode == "custom" and isinstance(chunk, dict) and chunk.get("event"):
+                event = encode_sse(str(chunk["event"]), chunk.get("data") or {})
+                events.append(event)
+                yield event
+
+        snapshot = graph.get_state(config)
+        values = getattr(snapshot, "values", None) or {}
+        now = time.time()
+        redis.hset(thread_meta_key(thread_id), mapping={"last_active": now, "checkpoint_expires_at": now + CHECKPOINT_TTL_SECONDS})
+        pending = _interrupt_from_snapshot(snapshot, thread_id)
+        if pending:
+            redis.hset(thread_meta_key(thread_id), mapping={"pending_interrupt_id": pending.get("interrupt_id") or ""})
+            event = encode_sse("interrupt", pending)
+            events.append(event)
+            yield event
+        else:
+            redis.hdel(thread_meta_key(thread_id), "pending_interrupt_id")
+            verifier = values.get("verifier_output") or {}
+            if verifier:
+                event = encode_sse("verification", {
+                    "status": verifier.get("status"),
+                    "method": verifier.get("verification_method") or verifier.get("method") or "llm",
+                    "confidence": verifier.get("confidence"),
+                })
+                events.append(event)
+                yield event
+            final_response = values.get("final_response")
+            if final_response:
+                event = encode_sse("solution", {"text": str(final_response)})
+                events.append(event)
+                yield event
+            event = encode_sse("done", {
+                "run_id": __import__("uuid").uuid4().hex,
+                "message_id": __import__("uuid").uuid4().hex,
+                "models": [],
+                "usage": {
+                    "llm_calls": int(values.get("llm_calls_used") or 0),
+                    "tool_calls": int(values.get("tool_calls_used") or 0),
+                },
+            })
+            events.append(event)
+            yield event
+        completed = True
+    except Exception:
+        event = encode_sse("error", {"code": "resume_failed", "message": "The interrupted request could not be resumed.", "retryable": True})
+        events.append(event)
+        yield event
+        completed = True
+    finally:
+        # Cache the exact emitted events; the same key can never execute resume twice.
+        if completed:
+            redis.set(
+                idempotency_storage_key,
+                json.dumps({"status": "complete", "events": events}, separators=(",", ":")),
+                ex=IDEMPOTENCY_TTL_SECONDS,
+            )
+        else:
+            redis.set(
+                idempotency_storage_key,
+                json.dumps({"status": "failed", "events": [encode_sse("error", {"code": "resume_interrupted", "message": "Resume did not complete; do not reuse this request key.", "retryable": False})]}, separators=(",", ":")),
+                ex=IDEMPOTENCY_TTL_SECONDS,
+            )
+
+
+@router.post("/{thread_id}/resume")
+def resume_thread(
+    thread_id: str,
+    body: ResumeRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    student_id: str = Depends(get_current_student),
+    redis=Depends(get_redis),
+    graph=Depends(get_graph_app),
+):
+    metadata = check_thread_owner(redis, thread_id, student_id)
+    config = {"configurable": {"thread_id": thread_id}}
+    try:
+        snapshot = graph.get_state(config)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"code": "checkpoint_unavailable", "message": "Thread state is temporarily unavailable.", "retryable": True}) from exc
+    require_live_checkpoint(metadata, snapshot)
+    pending = _interrupt_from_snapshot(snapshot, thread_id)
+    if not pending:
+        raise HTTPException(status_code=409, detail={"code": "no_pending_interrupt", "message": "This thread has no pending interrupt to resume.", "retryable": False})
+    key = validate_idempotency_key(idempotency_key)
+    storage_key = f"idem:{thread_id}:{key}"
+    reserved = redis.set(storage_key, json.dumps({"status": "processing"}), ex=IDEMPOTENCY_TTL_SECONDS, nx=True)
+    if not reserved:
+        raw = redis.get(storage_key)
+        try:
+            cached = json.loads(raw.decode() if isinstance(raw, bytes) else raw or "{}")
+        except (ValueError, TypeError):
+            cached = {}
+        if cached.get("status") == "complete":
+            return StreamingResponse(
+                iter(cached.get("events") or []),
+                media_type="text/event-stream",
+                headers=sse_headers(),
+            )
+        raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
+    return StreamingResponse(
+        _resume_stream(graph, redis, thread_id, metadata, body.response, storage_key),
+        media_type="text/event-stream",
+        headers=sse_headers(),
+    )
