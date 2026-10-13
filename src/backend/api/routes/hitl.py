@@ -17,7 +17,7 @@ from backend.api.deps import (
 )
 from backend.api.routes.chat import _interrupt_from_snapshot
 from backend.api.schemas import ResumeRequest
-from backend.api.sse import encode_sse, sse_headers
+from backend.api.sse import encode_sse, solution_event_data, sse_headers
 
 router = APIRouter(prefix="/threads", tags=["hitl"])
 
@@ -86,14 +86,14 @@ async def _resume_stream(
             if verifier:
                 event = encode_sse("verification", {
                     "status": verifier.get("status"),
-                    "method": verifier.get("verification_method") or verifier.get("method") or "llm",
+                    "method": verifier.get("verification_method") or verifier.get("method") or "unavailable",
                     "confidence": verifier.get("confidence"),
                 })
                 events.append(event)
                 yield event
             final_response = values.get("final_response")
             if final_response:
-                event = encode_sse("solution", {"text": str(final_response)})
+                event = encode_sse("solution", solution_event_data(str(final_response)))
                 events.append(event)
                 yield event
             event = encode_sse("done", {
