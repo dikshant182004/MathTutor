@@ -44,7 +44,7 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
             if mode == "messages":
                 message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
                 text = getattr(message, "content", "")
-                if isinstance(text, str) and text:
+                if isinstance(text, str) and text and message.__class__.__name__.endswith("Chunk"):
                     yield encode_sse("token", {"text": text})
             elif mode == "updates" and isinstance(chunk, dict):
                 for node_name, update in chunk.items():
