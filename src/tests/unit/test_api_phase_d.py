@@ -11,7 +11,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
 from backend.agents.state import AgentState
-from backend.api.deps import get_current_student, get_graph_app, get_redis, issue_access_token
+from backend.api.deps import enforce_rate_limit, get_current_student, get_graph_app, get_redis, issue_access_token
 from backend.api.main import app
 
 
@@ -207,3 +207,14 @@ def test_real_langgraph_interrupt_pauses_resumes_same_thread_and_duplicate_is_id
     assert duplicate.status_code == 200
     assert duplicate.text == resumed.text
     assert counters["resumed"] == 1
+
+
+
+def test_shared_ip_rate_limit_returns_429(api_client):
+    _, redis, _ = api_client
+    for _ in range(120):
+        enforce_rate_limit(redis, client_ip="198.51.100.10")
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as raised:
+        enforce_rate_limit(redis, client_ip="198.51.100.10")
+    assert raised.value.status_code == 429
