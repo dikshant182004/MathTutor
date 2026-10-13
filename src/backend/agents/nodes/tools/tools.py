@@ -5,13 +5,9 @@ import tempfile
 from backend.agents import Any, Dict, List, Optional, os
 
 import cohere
-import faiss
 import numpy as np
 import sympy as sp
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.tools import tool
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from rank_bm25 import BM25Okapi
 
 from backend.agents import logger
 from backend.agents.nodes.tools import (
@@ -87,6 +83,13 @@ def ingest_pdf(
 
     Returns: {filename, pages, chunks, total_chunks}
     """
+    # Keep the API import path light. The legacy Streamlit PDF-ingestion path
+    # still loads these optional RAG dependencies when a PDF is actually ingested.
+    import faiss
+    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from rank_bm25 import BM25Okapi
+
     if not file_bytes:
         raise ValueError("Empty file bytes — nothing to ingest.")
 
