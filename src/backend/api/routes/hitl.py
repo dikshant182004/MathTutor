@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from backend.api.deps import (
-    CHECKPOINT_TTL_SECONDS, IDEMPOTENCY_TTL_SECONDS, check_thread_owner,
+    CHECKPOINT_TTL_SECONDS, IDEMPOTENCY_TTL_SECONDS, THREAD_TTL_SECONDS, check_thread_owner,
     get_current_student, get_graph_app, get_redis, require_live_checkpoint,
     thread_meta_key, validate_idempotency_key,
 )
