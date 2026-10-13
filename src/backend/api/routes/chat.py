@@ -13,7 +13,7 @@ from backend.api.deps import (
     get_graph_app, get_redis, require_live_checkpoint, thread_meta_key,
 )
 from backend.api.schemas import MessageRequest
-from backend.api.sse import encode_sse, sse_headers
+from backend.api.sse import encode_sse, solution_event_data, sse_headers
 
 router = APIRouter(prefix="/threads", tags=["chat"])
 
@@ -51,7 +51,7 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                     if not isinstance(update, dict):
                         continue
                     timings = update.get("node_timings_ms") or {}
-                    node_event = {"name": str(node_name), "status": "complete"}
+                    node_event = {"name": str(node_name), "status": "interrupted" if "__interrupt__" in update else "complete"}
                     if node_name in timings:
                         node_event["ms"] = timings[node_name]
                         yield encode_sse("node", node_event)
@@ -90,12 +90,12 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
         if verifier:
             yield encode_sse("verification", {
                 "status": verifier.get("status"),
-                "method": verifier.get("verification_method") or verifier.get("method") or "llm",
+                "method": verifier.get("verification_method") or verifier.get("method") or "unavailable",
                 "confidence": verifier.get("confidence"),
             })
         final_response = values.get("final_response")
         if final_response:
-            yield encode_sse("solution", {"text": str(final_response)})
+            yield encode_sse("solution", solution_event_data(str(final_response)))
         yield encode_sse("done", {
             "run_id": str(uuid.uuid4()),
             "message_id": str(uuid.uuid4()),
