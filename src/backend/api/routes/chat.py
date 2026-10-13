@@ -60,13 +60,20 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                     event_count += 1
                     yield encode_sse("node", node_event)
                     if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
+                        from backend.agents.routing_policy import route_with_reason
+                        try:
+                            route_path, route_reason = route_with_reason(update)
+                        except Exception:
+                            route_path, route_reason = update.get("route"), update.get("route_reason")
+                        plan = update.get("solution_plan") or {}
+                        parsed = update.get("parsed_data") or {}
                         event_count += 1
                         yield encode_sse("route", {
-                            "path": update.get("route"),
+                            "path": route_path,
                             "complexity": update.get("complexity"),
-                            "intent": (update.get("solution_plan") or {}).get("intent_type") if isinstance(update.get("solution_plan"), dict) else None,
-                            "topic": (update.get("parsed_data") or {}).get("topic") if isinstance(update.get("parsed_data"), dict) else None,
-                            "reason": update.get("route_reason"),
+                            "intent": plan.get("intent_type") if isinstance(plan, dict) else None,
+                            "topic": parsed.get("topic") if isinstance(parsed, dict) else None,
+                            "reason": route_reason,
                         })
             elif mode == "custom" and isinstance(chunk, dict) and chunk.get("event"):
                 event_count += 1
