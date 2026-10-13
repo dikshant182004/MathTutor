@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
@@ -72,8 +72,29 @@ def decode_access_token(token: str) -> str:
     return student_id
 
 
+def enforce_rate_limit(redis: Any, *, client_ip: str, student_id: str | None = None) -> None:
+    """Use Redis counters so limits work across stateless API instances."""
+    window = int(time.time() // 60)
+    ip_digest = __import__("hashlib").sha256((client_ip or "unknown").encode("utf-8")).hexdigest()[:16]
+    checks = [(f"rl:ip:{ip_digest}:{window}", 120)]
+    if student_id:
+        checks.append((f"rl:student:{student_id}:{window}", 60))
+    for key, limit in checks:
+        count = int(redis.incr(key))
+        if count == 1:
+            redis.expire(key, 120)
+        if count > limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "rate_limited", "message": "Too many requests. Please wait before trying again.", "retryable": True},
+                headers={"Retry-After": "60"},
+            )
+
+
 def get_current_student(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    redis=Depends(get_redis),
 ) -> str:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
@@ -81,7 +102,9 @@ def get_current_student(
             detail={"code": "missing_token", "message": "Bearer authentication is required.", "retryable": False},
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return decode_access_token(credentials.credentials)
+    student_id = decode_access_token(credentials.credentials)
+    enforce_rate_limit(redis, client_ip=request.client.host if request.client else "unknown", student_id=student_id)
+    return student_id
 
 
 def get_redis():
