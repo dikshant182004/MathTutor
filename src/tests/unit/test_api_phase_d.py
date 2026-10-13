@@ -10,6 +10,7 @@ from langgraph.types import interrupt
 from backend.agents.state import AgentState
 from backend.api.deps import enforce_rate_limit, get_graph_app, get_redis, issue_access_token
 from backend.api.main import app
+from backend.api.sse import solution_event_data
 
 
 STUDENT_A = "aaaaaaaaaaaaaaaa"
@@ -215,3 +216,11 @@ def test_shared_ip_rate_limit_returns_429(api_client):
     with pytest.raises(HTTPException) as raised:
         enforce_rate_limit(redis, client_ip="198.51.100.10")
     assert raised.value.status_code == 429
+
+
+
+def test_sse_solution_parser_preserves_text_and_extracts_numbered_steps():
+    result = solution_event_data("Step 1 — Simplify\n2+2=4\nStep 2 — Answer\nx=4")
+    assert result["text"].startswith("Step 1")
+    assert [step["number"] for step in result["steps"]] == [1, 2]
+    assert "2+2=4" in result["steps"][0]["text"]
