@@ -1,12 +1,11 @@
 """SSE chat stream over the existing LangGraph workflow."""
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.api.deps import (
@@ -36,7 +35,6 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
 
     config = {"configurable": {"thread_id": thread_id}}
     initial = make_initial_state(student_id=student_id, thread_id=thread_id, raw_text=content)
-    event_count = 0
     try:
         async for mode, chunk in graph.astream(
             initial,
@@ -47,7 +45,6 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                 message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
                 text = getattr(message, "content", "")
                 if isinstance(text, str) and text:
-                    event_count += 1
                     yield encode_sse("token", {"text": text})
             elif mode == "updates" and isinstance(chunk, dict):
                 for node_name, update in chunk.items():
@@ -57,8 +54,7 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                     node_event = {"name": str(node_name), "status": "complete"}
                     if node_name in timings:
                         node_event["ms"] = timings[node_name]
-                    event_count += 1
-                    yield encode_sse("node", node_event)
+                        yield encode_sse("node", node_event)
                     if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
                         from backend.agents.routing_policy import route_with_reason
                         try:
@@ -67,7 +63,6 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                             route_path, route_reason = update.get("route"), update.get("route_reason")
                         plan = update.get("solution_plan") or {}
                         parsed = update.get("parsed_data") or {}
-                        event_count += 1
                         yield encode_sse("route", {
                             "path": route_path,
                             "complexity": update.get("complexity"),
