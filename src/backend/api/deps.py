@@ -156,7 +156,7 @@ def require_live_checkpoint(metadata: dict[str, str], snapshot: Any) -> None:
         expired = expiry is not None and float(expiry) <= time.time()
     except (TypeError, ValueError):
         expired = True
-    if not has_checkpoint and expired:
+    if expired:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail={"code": "checkpoint_expired", "message": "This thread's checkpoint has expired. Start a new thread to continue.", "retryable": False},
