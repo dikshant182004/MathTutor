@@ -11,6 +11,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
+from backend.agents.state import AgentState
 from backend.api.deps import get_current_student, get_graph_app, get_redis, issue_access_token
 from backend.api.main import app
 
@@ -104,25 +105,19 @@ class FakeRedis:
         return iter(key for key in keys if fnmatch.fnmatch(key, match))
 
 
-class DemoState(TypedDict, total=False):
-    raw_text: str
-    answer: str
-    final_response: str
-
-
 @pytest.fixture
 def api_client(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "phase-d-test-secret-with-at-least-32-characters")
     redis = FakeRedis()
     counters = {"resumed": 0}
 
-    def wait_for_human(state: DemoState):
+    def wait_for_human(state: AgentState):
         response = interrupt({"type": "clarification", "prompt": "Please confirm the answer."})
         counters["resumed"] += 1
         answer = str(response.get("answer", ""))
         return {"answer": answer, "final_response": answer}
 
-    builder = StateGraph(DemoState)
+    builder = StateGraph(AgentState)
     builder.add_node("wait_for_human", wait_for_human)
     builder.set_entry_point("wait_for_human")
     builder.add_edge("wait_for_human", END)
