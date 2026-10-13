@@ -54,7 +54,7 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                     node_event = {"name": str(node_name), "status": "interrupted" if "__interrupt__" in update else "complete"}
                     if node_name in timings:
                         node_event["ms"] = timings[node_name]
-                        yield encode_sse("node", node_event)
+                    yield encode_sse("node", node_event)
                     if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
                         from backend.agents.routing_policy import route_with_reason
                         try:
@@ -71,7 +71,6 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                             "reason": route_reason,
                         })
             elif mode == "custom" and isinstance(chunk, dict) and chunk.get("event"):
-                event_count += 1
                 yield encode_sse(str(chunk["event"]), chunk.get("data") or {})
 
         snapshot = graph.get_state(config)
