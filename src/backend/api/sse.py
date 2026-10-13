@@ -19,7 +19,7 @@ def sse_headers() -> dict[str, str]:
     }
 
 
-_STEP_HEADER = re.compile(r"(?m)^\\s*Step\\s+(\\d+)\\s*[—–:-]\\s*")
+_STEP_HEADER = re.compile(r"(?m)^\s*Step\s+(\d+)\s*[—–:-]\s*")
 
 
 def solution_event_data(text: str) -> dict[str, Any]:
