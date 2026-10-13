@@ -38,14 +38,14 @@ async def _resume_stream(
             if mode == "messages":
                 message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
                 content = getattr(message, "content", "")
-                if isinstance(content, str) and content:
+                if isinstance(content, str) and content and message.__class__.__name__.endswith("Chunk"):
                     event = encode_sse("token", {"text": content})
                     events.append(event)
                     yield event
             elif mode == "updates" and isinstance(chunk, dict):
                 for node_name, update in chunk.items():
                     if isinstance(update, dict):
-                        event = encode_sse("node", {"name": str(node_name), "status": "complete"})
+                        event = encode_sse("node", {"name": str(node_name), "status": "interrupted" if "__interrupt__" in update else "complete"})
                         events.append(event)
                         yield event
                         if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
