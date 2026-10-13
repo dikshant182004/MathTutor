@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
@@ -14,7 +15,7 @@ from backend.api.deps import (
     get_current_student, get_graph_app, get_redis, require_live_checkpoint,
     thread_meta_key, validate_idempotency_key,
 )
-from backend.api.routes.chat import _interrupt_from_snapshot, graph_event_stream
+from backend.api.routes.chat import _interrupt_from_snapshot
 from backend.api.schemas import ResumeRequest
 from backend.api.sse import encode_sse, sse_headers
 
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/threads", tags=["hitl"])
 
 
 async def _resume_stream(
-    graph: Any, redis: Any, thread_id: str, metadata: dict[str, str],
+    graph: Any, redis: Any, thread_id: str,
     response: dict, idempotency_storage_key: str,
 ) -> AsyncIterator[str]:
     events: list[str] = []
@@ -96,7 +97,7 @@ async def _resume_stream(
                 events.append(event)
                 yield event
             event = encode_sse("done", {
-                "run_id": __import__("uuid").uuid4().hex,
+                "run_id": uuid.uuid4().hex,
                 "message_id": __import__("uuid").uuid4().hex,
                 "models": [],
                 "usage": {
@@ -181,7 +182,7 @@ def resume_thread(
             )
         raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
     return StreamingResponse(
-        _resume_stream(graph, redis, thread_id, metadata, body.response, storage_key),
+        _resume_stream(graph, redis, thread_id, body.response, storage_key),
         media_type="text/event-stream",
         headers=sse_headers(),
     )
