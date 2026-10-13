@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import fnmatch
-import json
-import os
-
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
@@ -11,7 +8,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
 from backend.agents.state import AgentState
-from backend.api.deps import enforce_rate_limit, get_current_student, get_graph_app, get_redis, issue_access_token
+from backend.api.deps import enforce_rate_limit, get_graph_app, get_redis, issue_access_token
 from backend.api.main import app
 
 
