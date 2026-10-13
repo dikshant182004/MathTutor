@@ -114,7 +114,7 @@ def api_client(monkeypatch):
         response = interrupt({"type": "clarification", "prompt": "Please confirm the answer."})
         counters["resumed"] += 1
         answer = str(response.get("answer", ""))
-        return {"answer": answer, "final_response": answer}
+        return {"final_response": answer}
 
     builder = StateGraph(AgentState)
     builder.add_node("wait_for_human", wait_for_human)
