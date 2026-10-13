@@ -171,12 +171,18 @@ def check_thread_owner(redis: Any, thread_id: str, student_id: str) -> dict[str,
 
 
 def require_live_checkpoint(metadata: dict[str, str], snapshot: Any) -> None:
+    values = getattr(snapshot, "values", None) or {}
+    tasks = getattr(snapshot, "tasks", None) or ()
+    has_interrupt = any(getattr(task, "interrupts", None) for task in tasks)
+    has_checkpoint = bool(values) or bool(getattr(snapshot, "next", None)) or has_interrupt
     expiry = metadata.get("checkpoint_expires_at")
     try:
         expired = expiry is not None and float(expiry) <= time.time()
     except (TypeError, ValueError):
         expired = True
-    if expired:
+    # A checkpoint expected by metadata but missing from the saver is not resumable.
+    missing_checkpoint = expiry is not None and not has_checkpoint
+    if expired or missing_checkpoint:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail={"code": "checkpoint_expired", "message": "This thread's checkpoint has expired. Start a new thread to continue.", "retryable": False},
