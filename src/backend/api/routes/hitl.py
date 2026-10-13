@@ -47,6 +47,23 @@ async def _resume_stream(
                         event = encode_sse("node", {"name": str(node_name), "status": "complete"})
                         events.append(event)
                         yield event
+                        if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
+                            from backend.agents.routing_policy import route_with_reason
+                            try:
+                                route_path, route_reason = route_with_reason(update)
+                            except Exception:
+                                route_path, route_reason = update.get("route"), update.get("route_reason")
+                            plan = update.get("solution_plan") or {}
+                            parsed = update.get("parsed_data") or {}
+                            event = encode_sse("route", {
+                                "path": route_path,
+                                "complexity": update.get("complexity"),
+                                "intent": plan.get("intent_type") if isinstance(plan, dict) else None,
+                                "topic": parsed.get("topic") if isinstance(parsed, dict) else None,
+                                "reason": route_reason,
+                            })
+                            events.append(event)
+                            yield event
             elif mode == "custom" and isinstance(chunk, dict) and chunk.get("event"):
                 event = encode_sse(str(chunk["event"]), chunk.get("data") or {})
                 events.append(event)
