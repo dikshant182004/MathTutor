@@ -408,7 +408,10 @@ class MathTutorWorkflow(
         graph.add_node("record_learning", timed_node("record_learning", _record_learning_node))
         graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent, model_node=True))
         graph.add_node("hitl_node", timed_node("hitl_node", self.hitl_node))
-        graph.add_node("budget_stop_node", lambda state: {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."})
+        graph.add_node("budget_stop_node", lambda state: {
+            "budget_exhausted": True,
+            "final_response": str((state.get("solver_output") or {}).get("solution") or state.get("final_response") or "This request reached its tool-call budget before an answer was produced.") + "\n\n*Unverified: tool-call budget exhausted.*",
+        })
         graph.add_edge("budget_stop_node", END)
 
         # ── Entry ──────────────────────────────────────────────────────────────
