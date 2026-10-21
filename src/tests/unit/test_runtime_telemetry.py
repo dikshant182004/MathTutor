@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from backend.agents.runtime_telemetry import budget_limits, learning_evidence, record_node_timing
 
 
@@ -55,3 +57,31 @@ def test_model_budget_stops_before_invoking_node():
     assert called == []
     assert result["budget_exhausted"] is True
     assert "budget" in result["final_response"].lower()
+
+
+
+def test_deterministic_node_does_not_consume_model_budget():
+    from backend.agents.runtime_telemetry import timed_node
+
+    result = timed_node("deterministic", lambda state: {"llm_calls_made": 0, "checked": True})(
+        {"node_timings_ms": {}, "llm_calls_used": 2, "max_llm_calls": 2}
+    )
+    assert result["checked"] is True
+    assert "llm_calls_used" not in result
+
+
+def test_total_deadline_stops_next_node_before_invocation():
+    from backend.agents.runtime_telemetry import timed_node
+
+    called = []
+    result = timed_node("after_deadline", lambda state: called.append(True) or {"ok": True})(
+        {
+            "node_timings_ms": {},
+            "request_started_at": time.time() - 241,
+            "solver_output": {"solution": "x = 1"},
+        }
+    )
+    assert called == []
+    assert result["budget_exhausted"] is True
+    assert "deadline" in result["final_response"].lower()
+    assert "x = 1" in result["final_response"]
