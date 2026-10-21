@@ -4,6 +4,7 @@ from backend.agents import Agent_Exception, HumanMessage, logger, sys
 from backend.agents.base import BaseAgent
 from backend.agents.state import AgentState
 from backend.agents.utils.artifacts import IntakeOutput
+from backend.agents.routing_policy import route_with_reason
 from backend.agents.utils.helper import _log_payload as payload
 class IntakeAgent(BaseAgent):
     def intake_node(self, state: AgentState) -> dict:
@@ -25,7 +26,10 @@ Student input:
             if result.confidence < 0.6:
                 complexity = {"trivial": "standard", "standard": "hard", "hard": "hard"}.get(complexity, "hard")
             payload(state, "intake", summary=f"{result.topic} | {result.difficulty} | {result.intent}", fields={"Safe": str(result.safe), "Complexity": complexity, "Intent": result.intent, "Clarification": result.clarification_reason})
-            return {"intake_output": result.model_dump(), "parsed_data": parsed, "solution_plan": plan, "guardrail_passed": result.safe, "guardrail_reason": result.block_reason, "complexity": complexity, "hitl_required": result.needs_clarification, "hitl_type": "clarification" if result.needs_clarification else None, "hitl_reason": result.clarification_reason, "final_response": result.student_message if not result.safe else state.get("final_response"), "agent_payload_log": state.get("agent_payload_log") or [], "llm_calls_made": 1}
+            update = {"intake_output": result.model_dump(), "parsed_data": parsed, "solution_plan": plan, "guardrail_passed": result.safe, "guardrail_reason": result.block_reason, "complexity": complexity, "hitl_required": result.needs_clarification, "hitl_type": "clarification" if result.needs_clarification else None, "hitl_reason": result.clarification_reason, "final_response": result.student_message if not result.safe else state.get("final_response"), "agent_payload_log": state.get("agent_payload_log") or [], "llm_calls_made": 1}
+            routing_state = {**state, **update}
+            update["route"], update["route_reason"] = route_with_reason(routing_state)
+            return update
         except Exception as exc:
             logger.error("Intake node failed: %s", type(exc).__name__)
             raise Agent_Exception(exc, sys)
