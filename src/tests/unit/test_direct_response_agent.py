@@ -46,15 +46,15 @@ def _base_state(intent: str = "explain", problem: str = "What is a derivative?")
 # ── explain intent ────────────────────────────────────────────────────────────
 
 @pytest.mark.unit
-def test_explain_returns_hitl_satisfaction(monkeypatch):
+def test_explain_returns_without_satisfaction_interrupt(monkeypatch):
     monkeypatch.setattr(dr, "payload", lambda *a, **k: None)
     monkeypatch.setattr(dr, "format_ltm_for_explainer", lambda *_: "")
 
     agent = _make_agent("<content>Derivatives measure rate of change.</content>")
     out   = agent.direct_response_agent(_base_state("explain"))
 
-    assert out["hitl_required"] is True
-    assert out["hitl_type"]     == "satisfaction"
+    assert out["hitl_required"] is False
+    assert out["hitl_type"]     is None
 
 
 @pytest.mark.unit
