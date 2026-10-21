@@ -1,7 +1,7 @@
 """Small pure helpers for per-request orchestration telemetry and budgets."""
 from __future__ import annotations
 
-from time import perf_counter
+from time import perf_counter, time
 from typing import Any, Callable
 
 
@@ -21,7 +21,19 @@ def timed_node(
     """Wrap a node while preserving its updates and recording measured duration."""
     def wrapped(state: dict[str, Any]) -> dict[str, Any]:
         started = perf_counter()
+        request_started_at = float(state.get("request_started_at") or time())
         try:
+            elapsed_total_ms = max(0.0, (time() - request_started_at) * 1000.0)
+            if elapsed_total_ms >= 240_000:
+                best = state.get("final_response") or (state.get("solver_output") or {}).get("solution") or ""
+                message = str(best).strip()
+                message = (message + "\n\n" if message else "") + "*Unverified: the 240-second request deadline was reached.*"
+                return {
+                    "request_started_at": request_started_at,
+                    "budget_exhausted": True,
+                    "final_response": message,
+                    "node_timings_ms": record_node_timing(state, node_name, (perf_counter() - started) * 1000.0),
+                }
             max_llm, _ = budget_limits(state)
             used = int(state.get("llm_calls_used") or 0)
             if model_node and used >= max_llm:
@@ -43,11 +55,16 @@ def timed_node(
             calls_made = max(0, int(updates.pop("llm_calls_made", default_calls)))
             if calls_made:
                 updates = {**updates, "llm_calls_used": used + calls_made}
+            elapsed_ms = (perf_counter() - started) * 1000.0
+            if elapsed_ms >= 60_000:
+                best = updates.get("final_response") or (updates.get("solver_output") or state.get("solver_output") or {}).get("solution") or state.get("final_response") or ""
+                message = str(best).strip()
+                message = (message + "\n\n" if message else "") + f"*Unverified: node '{node_name}' exceeded the 60-second node budget.*"
+                updates = {**updates, "budget_exhausted": True, "final_response": message}
             return {
                 **updates,
-                "node_timings_ms": record_node_timing(
-                    state, node_name, (perf_counter() - started) * 1000.0
-                ),
+                "request_started_at": request_started_at,
+                "node_timings_ms": record_node_timing(state, node_name, elapsed_ms),
             }
         except Exception:
             # Failed node time is still useful telemetry; never swallow the error.
