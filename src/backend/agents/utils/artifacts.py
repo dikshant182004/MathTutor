@@ -87,6 +87,7 @@ class VerifierOutput(BaseModel):
     )
     hitl_reason: Optional[str] = Field(None, description="Required when status == needs_human.")
     confidence: float = Field(..., description="Your confidence in this verdict, 0.0–1.0.")
+    verification_method: str = Field("llm", description="symbolic | numeric | llm | none")
 
     # enforce suggested_fix is present when status != "correct"
     @model_validator(mode="after")
