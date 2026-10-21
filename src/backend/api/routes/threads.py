@@ -86,6 +86,8 @@ def delete_thread(
     redis=Depends(get_redis),
 ) -> None:
     check_thread_owner(redis, thread_id, student_id)
+    if redis.get(f"resume-lock:{thread_id}"):
+        raise HTTPException(status_code=409, detail={"code": "thread_resume_in_progress", "message": "This thread cannot be deleted while it is being resumed.", "retryable": True})
     redis.zrem(threads_key(student_id), thread_id)
     redis.delete(thread_meta_key(thread_id), stm_summary_key(thread_id))
     # Checkpoints are access-denied immediately and expire under the checkpointer TTL.
