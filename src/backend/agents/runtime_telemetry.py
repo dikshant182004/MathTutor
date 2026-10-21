@@ -39,8 +39,9 @@ def timed_node(
                     ),
                 }
             updates = fn(state) or {}
-            if model_node:
-                calls_made = max(0, int(updates.pop("llm_calls_made", 1)))
+            default_calls = 1 if model_node else 0
+            calls_made = max(0, int(updates.pop("llm_calls_made", default_calls)))
+            if calls_made:
                 updates = {**updates, "llm_calls_used": used + calls_made}
             return {
                 **updates,
