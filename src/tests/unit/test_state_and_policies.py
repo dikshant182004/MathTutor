@@ -131,8 +131,8 @@ def test_safety_llm_path_blocks_borderline_content(monkeypatch):
     agent.llm = _FakeLLM()
 
     out = agent.safety_agent({
-        "solver_output": {"solution": "some borderline text"},
-        "raw_text":      "some borderline text",
+        "solver_output": {"solution": "some borderline political propaganda text"},
+        "raw_text":      "some borderline political propaganda text",
         "parsed_data":   None,
     })
     assert out["safety_passed"] is False
