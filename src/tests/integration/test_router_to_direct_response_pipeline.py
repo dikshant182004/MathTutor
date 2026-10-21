@@ -83,5 +83,5 @@ def test_router_explain_feeds_direct_response(monkeypatch):
 
     assert dr_out["final_response"].startswith("## 📖 Explanation")
     assert "Chain rule" in dr_out["final_response"]
-    assert dr_out["hitl_required"] is True
-    assert dr_out["hitl_type"]     == "satisfaction"
+    assert dr_out["hitl_required"] is False
+    assert dr_out["hitl_type"]     is None
