@@ -29,3 +29,10 @@ Last checked: 2026-10-12 against official provider documentation.
 
 - LangGraph Redis checkpoint savers and stores support a TTL configuration with default_ttl in minutes and refresh_on_read. Source: https://github.com/redis-developer/langgraph-redis
 - This confirms the API exists; the exact installed version is pinned and import-tested by CI, while the 24-hour checkpoint TTL is configured in the relevant implementation phase.
+
+
+## MathTutor API authentication, HITL resume and checkpoint lifetime
+
+- The API requires short-lived HS256 JWTs, validates thread ownership before reading graph state, and applies Redis-backed per-IP and per-student rate limits.
+- HITL resume requires an `Idempotency-Key`, the current `interrupt_id`, a decision compatible with the interrupt type, and a response payload. A Redis NX lock serializes resume execution per thread; completed idempotent requests replay their cached SSE events.
+- The LangGraph Redis checkpointer is configured with `ttl={"default_ttl": 120, "refresh_on_read": True}`; the API's checkpoint metadata lifetime is aligned to 2 hours. The Redis saver refreshes checkpoint expiry on reads. This configuration is covered by a unit test; actual expiry behavior against a provisioned Redis service still requires a deployment smoke test.
