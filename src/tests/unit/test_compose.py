@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from backend.agents.nodes.compose import compose_node
+import importlib.util
+from pathlib import Path
+
+_MODULE_PATH = Path(__file__).resolve().parents[2] / "backend" / "agents" / "nodes" / "compose.py"
+_SPEC = importlib.util.spec_from_file_location("compose_module", _MODULE_PATH)
+compose_module = importlib.util.module_from_spec(_SPEC)
+assert _SPEC and _SPEC.loader
+_SPEC.loader.exec_module(compose_module)
+compose_node = compose_module.compose_node
 
 
 def test_compose_is_deterministic_and_parses_solution_steps():
