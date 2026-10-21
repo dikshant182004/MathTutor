@@ -10,8 +10,11 @@ def test_node_timing_accumulates_real_durations_without_mutating_state():
     assert state["node_timings_ms"] == {"solver": 4.0}
 
 
-def test_budget_limits_are_bounded_and_request_local():
-    assert budget_limits({}) == (8, 6)
+def test_budget_limits_are_complexity_specific_bounded_and_request_local():
+    assert budget_limits({"complexity": "trivial"}) == (2, 3)
+    assert budget_limits({"complexity": "standard"}) == (4, 3)
+    assert budget_limits({"complexity": "hard"}) == (6, 3)
+    assert budget_limits({}) == (4, 3)
     assert budget_limits({"max_llm_calls": 999, "max_tool_calls": -3}) == (30, 0)
     assert budget_limits({"max_llm_calls": 2, "max_tool_calls": 3}) == (2, 3)
 
