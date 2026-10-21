@@ -1,6 +1,6 @@
 from backend.agents import *
 from backend.agents.nodes import *
-from backend.agents.verification import deterministic_equation_check
+from backend.agents.nodes.verify_math import verify_math
 from backend.agents.runtime_telemetry import budget_limits
 
 class VerifierAgent(BaseAgent):
@@ -26,7 +26,7 @@ class VerifierAgent(BaseAgent):
                     "llm_calls_made": 0,
                 }
 
-            deterministic = deterministic_equation_check(problem_text, final_answer)
+            deterministic = verify_math(problem_text, final_answer)
             if deterministic is not None:
                 payload(
                     state, "verifier_agent",
