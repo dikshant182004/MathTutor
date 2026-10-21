@@ -25,6 +25,7 @@ router = APIRouter(prefix="/threads", tags=["hitl"])
 async def _resume_stream(
     graph: Any, redis: Any, thread_id: str,
     response: dict, idempotency_storage_key: str,
+    resume_lock_key: str, resume_lock_token: str,
 ) -> AsyncIterator[str]:
     events: list[str] = []
     completed = False
@@ -128,6 +129,16 @@ async def _resume_stream(
                 json.dumps({"status": "failed", "events": [encode_sse("error", {"code": "resume_interrupted", "message": "Resume did not complete; do not reuse this request key.", "retryable": False})]}, separators=(",", ":")),
                 ex=IDEMPOTENCY_TTL_SECONDS,
             )
+        # Production Redis uses atomic compare-and-delete to avoid releasing a lock
+        # that expired and was subsequently acquired by another request.
+        try:
+            redis.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                1, resume_lock_key, resume_lock_token,
+            )
+        except AttributeError:
+            if redis.get(resume_lock_key) == resume_lock_token:
+                redis.delete(resume_lock_key)
 
 
 @router.post("/{thread_id}/resume")
@@ -168,8 +179,49 @@ def resume_thread(
     pending = _interrupt_from_snapshot(snapshot, thread_id)
     if not pending:
         raise HTTPException(status_code=409, detail={"code": "no_pending_interrupt", "message": "This thread has no pending interrupt to resume.", "retryable": False})
+    if body.interrupt_id != str(pending.get("interrupt_id") or ""):
+        raise HTTPException(status_code=409, detail={"code": "stale_interrupt", "message": "The supplied interrupt ID does not match the thread's current pending interrupt.", "retryable": False})
+
+    hitl_type = str(pending.get("hitl_type") or pending.get("type") or "clarification")
+    decision = body.decision
+    response = dict(body.response)
+    allowed_decisions = {
+        "verification": {"correct", "incorrect"},
+        "clarification": {"submit", "retry"},
+        "bad_input": {"submit", "retry"},
+    }.get(hitl_type, {"submit", "retry"})
+    if decision not in allowed_decisions:
+        raise HTTPException(status_code=422, detail={"code": "invalid_decision", "message": "The decision is not valid for this interrupt type.", "retryable": False})
+    if hitl_type == "verification":
+        expected = decision == "correct"
+        if "is_correct" in response and bool(response["is_correct"]) != expected:
+            raise HTTPException(status_code=422, detail={"code": "decision_mismatch", "message": "The decision conflicts with the verification response.", "retryable": False})
+        response["is_correct"] = expected
+    if hitl_type == "clarification" and not any(
+        isinstance(response.get(field), str) and response[field].strip()
+        for field in ("corrected_text", "answer", "raw_text")
+    ):
+        raise HTTPException(status_code=422, detail={"code": "response_required", "message": "Provide clarification text before resuming.", "retryable": False})
+    if hitl_type == "bad_input" and decision == "submit" and not any(
+        isinstance(response.get(field), str) and response[field].strip()
+        for field in ("raw_text", "new_image_path", "new_audio_path")
+    ):
+        raise HTTPException(status_code=422, detail={"code": "response_required", "message": "Provide replacement input before resuming.", "retryable": False})
+
+    resume_lock_key = f"resume-lock:{thread_id}"
+    resume_lock_token = uuid.uuid4().hex
+    if not redis.set(resume_lock_key, resume_lock_token, ex=300, nx=True):
+        raise HTTPException(status_code=409, detail={"code": "thread_resume_in_progress", "message": "Another request is already resuming this thread.", "retryable": True})
+
     reserved = redis.set(storage_key, json.dumps({"status": "processing"}), ex=IDEMPOTENCY_TTL_SECONDS, nx=True)
     if not reserved:
+        try:
+            redis.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                1, resume_lock_key, resume_lock_token,
+            )
+        except AttributeError:
+            redis.delete(resume_lock_key)
         raw = redis.get(storage_key)
         try:
             cached = json.loads(raw.decode() if isinstance(raw, bytes) else raw or "{}")
@@ -183,7 +235,7 @@ def resume_thread(
             )
         raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
     return StreamingResponse(
-        _resume_stream(graph, redis, thread_id, body.response, storage_key),
+        _resume_stream(graph, redis, thread_id, response, storage_key, resume_lock_key, resume_lock_token),
         media_type="text/event-stream",
         headers=sse_headers(),
     )
