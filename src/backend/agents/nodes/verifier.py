@@ -1,6 +1,7 @@
 from backend.agents import *
 from backend.agents.nodes import *
 from backend.agents.verification import deterministic_equation_check
+from backend.agents.runtime_telemetry import budget_limits
 
 class VerifierAgent(BaseAgent):
 
@@ -37,6 +38,23 @@ class VerifierAgent(BaseAgent):
                     "verifier_output": deterministic,
                     "llm_calls_made": 0,
                     "agent_payload_log": state.get("agent_payload_log") or [],
+                }
+
+            if int(state.get("llm_calls_used") or 0) >= budget_limits(state)[0]:
+                reason = "The deterministic verifier was inconclusive and the model-call budget is exhausted."
+                return {
+                    "verifier_output": {
+                        "status": "needs_human",
+                        "verdict": reason,
+                        "suggested_fix": "A human reviewer should confirm the solution before it is treated as verified.",
+                        "hitl_reason": reason,
+                        "confidence": 0.0,
+                        "verification_method": "none",
+                    },
+                    "hitl_required": True,
+                    "hitl_type": "verification",
+                    "hitl_reason": reason,
+                    "llm_calls_made": 0,
                 }
 
             _VERIFIER_PROMPT = """You are a strict mathematical verifier for JEE-level problems.
