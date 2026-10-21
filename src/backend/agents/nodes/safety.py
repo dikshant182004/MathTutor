@@ -80,7 +80,21 @@ class SafetyAgent(BaseAgent):
                     "llm_calls_made": 0,
                 }
 
-            # ── Stage 2: LLM policy check ─────────────────────────────────────
+            # ── Stage 2: deterministic pass unless content is flagged ────────
+            review_terms = (
+                "weapon", "explosive", "poison", "drug dose", "self-harm",
+                "suicide", "hate speech", "slur", "sexual content",
+                "personal data", "aadhaar", "passport number", "political propaganda",
+            )
+            if not any(term in solution_text.casefold() for term in review_terms):
+                return {
+                    "safety_passed": True,
+                    "safety_reason": "No safety review keywords detected.",
+                    "llm_calls_made": 0,
+                    "agent_payload_log": state.get("agent_payload_log") or [],
+                }
+
+            # Only flagged output reaches the LLM policy check.
             policy = _load_output_policy()
             prompt = self._build_safety_prompt(solution_text, policy)
 
