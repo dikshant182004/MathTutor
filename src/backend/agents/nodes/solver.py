@@ -144,7 +144,7 @@ class SolverAgent(BaseAgent):
             rag_query = ""
             rag_result = ""
 
-system = self._build_system(
+            system = self._build_system(
                 strategy      = strategy,
                 attempt       = iteration + 1,
                 max_attempts  = 3,
