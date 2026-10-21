@@ -38,7 +38,6 @@ class HITLAgent(BaseAgent):
                     hitl_type = "clarification"
                 elif state.get("verifier_output"):
                     hitl_type = "verification"
-                elif state.get("final_response"):
                 else:
                     hitl_type = "clarification"
 
