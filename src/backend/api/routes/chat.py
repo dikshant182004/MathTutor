@@ -115,6 +115,8 @@ def send_message(
     graph=Depends(get_graph_app),
 ):
     metadata = check_thread_owner(redis, thread_id, student_id)
+    if redis.get(f"resume-lock:{thread_id}"):
+        raise HTTPException(status_code=409, detail={"code": "thread_resume_in_progress", "message": "This thread is currently being resumed. Retry after it completes.", "retryable": True})
     config = {"configurable": {"thread_id": thread_id}}
     try:
         snapshot = graph.get_state(config)
