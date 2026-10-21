@@ -16,15 +16,15 @@ from backend.agents.routing_policy import route_with_reason
 from backend.agents.nodes.solver import SolverAgent
 from backend.agents.nodes.verifier import VerifierAgent
 from backend.agents.nodes.safety import SafetyAgent
-from backend.agents.nodes.explainer import ExplainerAgent
+from backend.agents.nodes.compose import compose_node
 from backend.agents.nodes.direct_response import DirectResponseAgent   
 from backend.agents.nodes.hitl import HITLAgent
 from backend.agents.utils.helper import _log_payload as payload
 from backend.agents.nodes.memory.memory_manager import memory_manager_node
 from backend.agents.utils.db_utils import build_stm_checkpointer
-from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool
+from backend.agents.nodes.tools.tools import rag_tool, web_search_tool, calculator_tool, has_store
 
-SOLVER_TOOLS = [rag_tool, calculator_tool, web_search_tool]
+SOLVER_TOOLS = [calculator_tool, web_search_tool]
 
 def _build_checkpointer():
     try:
@@ -55,7 +55,7 @@ def _route_after_ocr(state: AgentState) -> str:
     text = (state.get("ocr_text") or "").strip()
     if conf < _MEDIA_CONF_THRESHOLD or not text:
         return "hitl_node"
-    return "guardrail_agent"
+    return "prefilter"
 
 
 def _route_after_asr(state: AgentState) -> str:
@@ -65,7 +65,7 @@ def _route_after_asr(state: AgentState) -> str:
     text = (state.get("transcript") or "").strip()
     if conf < _MEDIA_CONF_THRESHOLD or not text:
         return "hitl_node"
-    return "guardrail_agent"
+    return "prefilter"
 
 
 def _route_after_guardrail(state: AgentState) -> str:
@@ -163,47 +163,27 @@ def _run_tool_node(state: AgentState) -> dict:
     return {**result, "tool_calls_used": used + len(calls)}
 
 
-def _route_after_safety(state: AgentState):
-    if state.get("budget_exhausted"):
+def _route_after_safety(state: AgentState) -> str:
+    """Route safe output to deterministic composition or directly to learning."""
+    if state.get("budget_exhausted") or state.get("safety_passed") is False:
         return "END"
-    """safety_agent -> [explainer_agent | hitl_node | END]
- 
-    solve/hint/formula_lookup path : safety -> explainer_agent
-    explain/research/generate path : safety -> hitl_node  (direct_response already set final_response)
-    """
-    if state.get("safety_passed") is False:
-        return "END"
-    plan        = state.get("solution_plan") or {}
-    intent_type = plan.get("intent_type", "solve")
-    if intent_type in ("explain", "research", "generate"):
-        return "hitl_node"
-    return "explainer_agent"
+    intent = (state.get("solution_plan") or {}).get("intent_type", "solve")
+    if intent in ("explain", "research", "generate", "formula_lookup"):
+        return "record_learning"
+    return "compose_node"
 
 
 def _route_after_hitl(state: AgentState) -> str:
-    """hitl_node -> next step, based on hitl_type."""
+    """The graph suspends only for input, clarification, or verification."""
     hitl_type = state.get("hitl_type") or ""
-
     if hitl_type == "bad_input":
         return "detect_input"
     if hitl_type == "clarification":
-        return "guardrail_agent"
+        return "prefilter"
     if hitl_type == "verification":
         verifier = state.get("verifier_output") or {}
-        if (verifier.get("status") or "") == "correct":
-            return "safety_agent"
-        return "solver_agent"
-    if hitl_type == "satisfaction":
-        if state.get("student_satisfied") is True:
-            return "store_ltm"
-        # Re-explain: check what intent we're serving to route correctly
-        plan        = state.get("solution_plan") or {}
-        intent_type = plan.get("intent_type", "solve")
-        if intent_type in ("explain", "research", "generate"):
-            # Re-run direct_response_node with follow-up context injected
-            return "direct_response_node"
-        return "explainer_agent"
-    return "guardrail_agent"
+        return "safety_agent" if (verifier.get("status") or "") == "correct" else "solver_agent"
+    return "prefilter"
 
 
 def _retrieve_ltm_node(state: AgentState) -> dict:
@@ -220,16 +200,25 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         tool_calls_used = int(state.get("tool_calls_used") or 0)
         prefetch_web = bool(needs_web and query and tool_calls_used < max_tools)
         # Student memory retrieval and optional web retrieval are independent; run concurrently.
-        with ThreadPoolExecutor(max_workers=2 if prefetch_web else 1) as pool:
+        thread_id = str(state.get("thread_id") or "")
+        prefetch_notes = bool(thread_id and has_store(thread_id) and query)
+        workers = 1 + int(prefetch_web) + int(prefetch_notes)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
             memory_future = pool.submit(memory_manager_node, state)
             web_future = pool.submit(web_search_tool.invoke, {"query": query}) if prefetch_web else None
+            notes_future = pool.submit(rag_tool.invoke, {"query": query, "thread_id": thread_id}) if prefetch_notes else None
             out = memory_future.result()
             try:
                 web_context = web_future.result() if web_future else ""
             except Exception as exc:
                 logger.warning("[Retrieval] Optional web prefetch failed: %s", type(exc).__name__)
                 web_context = ""
-        state["retrieved_context"] = str(web_context or "")[:12000]
+            try:
+                notes_context = notes_future.result() if notes_future else ""
+            except Exception as exc:
+                logger.warning("[Retrieval] Optional student-notes retrieval failed: %s", type(exc).__name__)
+                notes_context = ""
+        state["retrieved_context"] = "\n\n".join(part for part in (str(notes_context or ""), str(web_context or "")) if part)[:12000]
         if prefetch_web:
             state["tool_calls_used"] = tool_calls_used + 1
 
@@ -290,6 +279,7 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
             "ltm_mode": "retrieve",
             **out,
             "retrieved_context": state.get("retrieved_context") or "",
+            "retrieved_chunks": {"student_notes": str(notes_context or "")[:6000], "web": str(web_context or "")[:6000]},
             "tool_calls_used": state.get("tool_calls_used") or 0,
             "agent_payload_log": state.get("agent_payload_log") or [],
         }
@@ -297,7 +287,7 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         raise Agent_Exception(e, sys)
 
 
-def _store_ltm_node(state: AgentState) -> dict:
+def _record_learning_node(state: AgentState) -> dict:
     try:
         state = dict(state)
         state["ltm_mode"] = "store"
@@ -380,7 +370,7 @@ class MathTutorWorkflow(
     SolverAgent,
     VerifierAgent,
     SafetyAgent,
-    ExplainerAgent,
+
     DirectResponseAgent,   
     HITLAgent,
 ):
@@ -414,10 +404,10 @@ class MathTutorWorkflow(
         graph.add_node("tool_node", timed_node("tool_node", _run_tool_node))
         graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent, model_node=True))
         graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent, model_node=True))
-        graph.add_node("explainer_agent", timed_node("explainer_agent", self.explainer_agent, model_node=True))
+        graph.add_node("compose_node", timed_node("compose_node", compose_node))
+        graph.add_node("record_learning", timed_node("record_learning", _record_learning_node))
         graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent, model_node=True))
         graph.add_node("hitl_node", timed_node("hitl_node", self.hitl_node))
-        graph.add_node("store_ltm", timed_node("store_ltm", _store_ltm_node))
         graph.add_node("budget_stop_node", lambda state: {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."})
         graph.add_edge("budget_stop_node", END)
 
@@ -478,32 +468,27 @@ class MathTutorWorkflow(
              "END": END},
         )
 
-        # safety -> [explainer | END]
+        # Safety is deterministic-first; safe solve output is composed without another LLM.
         graph.add_conditional_edges(
             "safety_agent",
             _route_after_safety,
-            {"explainer_agent": "explainer_agent", "hitl_node": "hitl_node", "END": END},
+            {"compose_node": "compose_node", "record_learning": "record_learning", "END": END},
         )
-
-        # explainer -> hitl (satisfaction check)
-        graph.add_conditional_edges("explainer_agent", _route_after_explainer, {"hitl_node": "hitl_node", "END": END})
+        graph.add_edge("compose_node", "record_learning")
+        graph.add_edge("record_learning", END)
      
         graph.add_conditional_edges(
             "hitl_node",
             _route_after_hitl,
             {
                 "detect_input":         "detect_input",
-                "guardrail_agent":      "prefilter",
+                "prefilter":             "prefilter",
                 "solver_agent":         "solver_agent",
                 "safety_agent":         "safety_agent",
-                "explainer_agent":      "explainer_agent",
                 "direct_response_node": "direct_response_node",
-                "store_ltm":            "store_ltm",
             },
         )
 
-        # store_ltm -> END
-        graph.add_edge("store_ltm", END)
 
         return graph
 
