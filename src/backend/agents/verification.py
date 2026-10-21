@@ -63,3 +63,79 @@ def deterministic_equation_check(problem: str, final_answer: str) -> dict | None
         "hitl_reason": None,
         "verification_method": "sympy_unique_numeric_equation",
     }
+
+
+
+# Phase C deterministic verification beyond unique-root equations.
+import re as _re
+import sympy as _sp
+from sympy.parsing.sympy_parser import convert_xor as _convert_xor, parse_expr as _parse_expr, standard_transformations as _standard_transformations
+
+_VERIFY_TRANSFORMS = _standard_transformations + (_convert_xor,)
+_VERIFY_ALLOWED_NAMES = {"x", "y", "z", "sin", "cos", "tan", "exp", "log", "sqrt", "pi", "E"}
+_VERIFY_EXPR_CHARS = _re.compile(r"^[A-Za-z0-9_+*/().^\-\s]+$")
+
+
+def _parse_safe_expression(expression: str, symbols: dict[str, object]):
+    expression = expression.strip().replace("$", "")
+    if not expression or len(expression) > 160 or not _VERIFY_EXPR_CHARS.fullmatch(expression):
+        return None
+    names = _re.findall(r"[A-Za-z_]\w*", expression)
+    if any(name not in _VERIFY_ALLOWED_NAMES for name in names):
+        return None
+    return _parse_expr(expression, local_dict=symbols, transformations=_VERIFY_TRANSFORMS)
+
+
+def _verify_integral(problem: str, final_answer: str) -> dict | None:
+    text = problem.strip().replace("$", "")
+    match = _re.search(
+        r"(?:integrate|integral\s+of|antiderivative\s+of)\s+(.+?)(?:\s+d([xyz]))?\s*[?.!]*$",
+        text,
+        flags=_re.IGNORECASE,
+    )
+    if not match:
+        return None
+    integrand_text, variable_name = match.group(1).strip(), (match.group(2) or "").lower()
+    if not variable_name:
+        variables = set(_re.findall(r"[xyz]", integrand_text.lower()))
+        if len(variables) != 1:
+            return None
+        variable_name = next(iter(variables))
+    symbol = _sp.Symbol(variable_name)
+    symbols = {
+        "x": _sp.Symbol("x"), "y": _sp.Symbol("y"), "z": _sp.Symbol("z"),
+        "sin": _sp.sin, "cos": _sp.cos, "tan": _sp.tan, "exp": _sp.exp,
+        "log": _sp.log, "sqrt": _sp.sqrt, "pi": _sp.pi, "E": _sp.E,
+    }
+    try:
+        integrand = _parse_safe_expression(integrand_text, symbols)
+        answer_text = _re.sub(r"(?i)\s*\+\s*(?:c|constant)\s*$", "", final_answer.strip())
+        answer_text = _re.sub(r"(?i)^\s*(?:final\s+answer|answer)\s*:\s*", "", answer_text)
+        antiderivative = _parse_safe_expression(answer_text, symbols)
+        if integrand is None or antiderivative is None:
+            return None
+        difference = _sp.simplify(_sp.diff(antiderivative, symbol) - integrand)
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError, _sp.SympifyError):
+        return None
+    correct = difference == 0
+    return {
+        "status": "correct" if correct else "incorrect",
+        "verdict": (
+            "Symbolic derivative check confirmed the proposed antiderivative."
+            if correct else
+            "Symbolic derivative check found that differentiating the proposed antiderivative does not recover the integrand."
+        ),
+        "suggested_fix": None if correct else "Differentiate the proposed antiderivative and correct it so the derivative matches the integrand.",
+        "confidence": 1.0,
+        "hitl_reason": None,
+        "verification_method": "symbolic",
+    }
+
+
+def verify_math(problem: str, final_answer: str) -> dict | None:
+    """Return a deterministic verdict when a safe, supported check is conclusive."""
+    equation_result = deterministic_equation_check(problem, final_answer)
+    if equation_result is not None:
+        equation_result["verification_method"] = "symbolic"
+        return equation_result
+    return _verify_integral(problem, final_answer)
