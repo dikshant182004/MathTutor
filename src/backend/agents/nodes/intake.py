@@ -23,12 +23,14 @@ Student input:
             parsed = {"problem_text": result.cleaned_problem, "topic": result.topic, "variables": result.variables, "constraints": result.constraints, "needs_clarification": result.needs_clarification, "clarification_reason": result.clarification_reason}
             plan = {"topic": result.topic, "difficulty": result.difficulty, "solver_strategy": result.solver_strategy, "intent_type": result.intent, "confidence": result.confidence, "needs_web": result.needs_web, "complexity": result.complexity}
             complexity = "trivial" if state.get("complexity") == "trivial" else result.complexity
-            if result.confidence < 0.6:
-                complexity = {"trivial": "standard", "standard": "hard", "hard": "hard"}.get(complexity, "hard")
             payload(state, "intake", summary=f"{result.topic} | {result.difficulty} | {result.intent}", fields={"Safe": str(result.safe), "Complexity": complexity, "Intent": result.intent, "Clarification": result.clarification_reason})
             update = {"intake_output": result.model_dump(), "parsed_data": parsed, "solution_plan": plan, "guardrail_passed": result.safe, "guardrail_reason": result.block_reason, "complexity": complexity, "hitl_required": result.needs_clarification, "hitl_type": "clarification" if result.needs_clarification else None, "hitl_reason": result.clarification_reason, "final_response": result.student_message if not result.safe else state.get("final_response"), "agent_payload_log": state.get("agent_payload_log") or [], "llm_calls_made": 1}
             routing_state = {**state, **update}
             update["route"], update["route_reason"] = route_with_reason(routing_state)
+            if result.confidence < 0.6:
+                effective_complexity = {"trivial": "standard", "standard": "hard", "hard": "hard"}.get(complexity, "hard")
+                update["complexity"] = effective_complexity
+                update["solution_plan"] = {**plan, "complexity": effective_complexity}
             return update
         except Exception as exc:
             logger.error("Intake node failed: %s", type(exc).__name__)
