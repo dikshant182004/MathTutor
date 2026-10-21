@@ -32,7 +32,8 @@ class AgentState(TypedDict):
     verifier_output:    Optional[dict]           # VerifierOutput
     safety_passed: Optional[bool]
     safety_reason: Optional[str]
-    explainer_output:   Optional[dict]           # ExplainerOutput
+    # Structured deterministic composition replaces the legacy explainer output.
+    solution_struct: Optional[dict]
     solve_iterations:   int                      # solver↔verifier loop counter
 
     agent_payload_log: Optional[List[dict]]
@@ -130,7 +131,7 @@ def make_initial_state(
         "safety_reason":       None,
  
         # Explanation
-        "explainer_output":    None,
+        "solution_struct":     None,
         "final_response":      None,
  
         # Memory
@@ -143,8 +144,9 @@ def make_initial_state(
 
         # Request-local budgets/telemetry. Defaults are bounded and overridable.
         "node_timings_ms":     {},
-        "max_llm_calls":       8,
-        "max_tool_calls":      6,
+        # None means complexity-specific defaults: trivial=2, standard=4, hard=6.
+        "max_llm_calls":       None,
+        "max_tool_calls":      3,
         "llm_calls_used":      0,
         "tool_calls_used":     0,
         "budget_exhausted":    False,
