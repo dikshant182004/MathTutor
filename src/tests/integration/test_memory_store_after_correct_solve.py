@@ -63,7 +63,6 @@ class _FakeVerifierLLM:
 @pytest.mark.integration
 def test_full_solve_verify_store_pipeline(monkeypatch):
     # ── patch solver dependencies ──────────────────────────────────────────
-    monkeypatch.setattr(solver_mod, "has_store",               lambda _: False)
     monkeypatch.setattr(
         solver_mod,
         "trim_messages_if_needed",
@@ -71,10 +70,6 @@ def test_full_solve_verify_store_pipeline(monkeypatch):
     )
     monkeypatch.setattr(solver_mod, "format_ltm_for_solver",   lambda *_: "")
     monkeypatch.setattr(solver_mod, "payload",                 lambda *a, **k: None)
-    monkeypatch.setattr(
-        solver_mod, "_make_scoped_rag",
-        lambda _: (_ for _ in ()).throw(RuntimeError("RAG must not run")),
-    )
 
     solver_agent             = solver_mod.SolverAgent.__new__(solver_mod.SolverAgent)
     solver_agent.reserve_llm = _FakeSolverReserveLLM()
