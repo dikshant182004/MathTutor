@@ -15,6 +15,9 @@ from backend.agents.routing_policy import route, route_with_reason
 ({"solution_plan":{"intent_type":"solve","confidence":.9},"complexity":"standard"},"retrieve_ltm","standard_solve_retrieval"),
 ({"solution_plan":{"intent_type":"solve","confidence":.9},"complexity":"hard"},"retrieve_ltm","hard_solve_retrieval_web_allowed"),
 ({"solution_plan":{"intent_type":"solve","confidence":.4},"complexity":"standard"},"retrieve_ltm","hard_solve_retrieval_web_allowed"),
+({"solution_plan":{"intent_type":"solve","confidence":.4},"complexity":"trivial"},"retrieve_ltm","standard_solve_retrieval"),
+({"solution_plan":{"intent_type":"unknown","confidence":.9},"complexity":"standard"},"retrieve_ltm","standard_solve_retrieval"),
+({"solution_plan":{"intent_type":"solve","confidence":"not-a-number"},"complexity":"standard"},"retrieve_ltm","hard_solve_retrieval_web_allowed"),
 ])
 def test_every_routing_policy_branch(state,target,reason):
     before=dict(state)
