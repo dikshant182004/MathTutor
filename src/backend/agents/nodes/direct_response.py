@@ -143,8 +143,8 @@ class DirectResponseAgent(BaseAgent):
             ltm_context   = state.get("ltm_context") or {}
             ltm_hint      = format_ltm_for_explainer(ltm_context, topic)
 
-            # Request-local signals avoid cross-request leakage under concurrent sessions.
-            tool_signals: list = []
+            # Request-local events are returned in graph state; nothing is shared across requests.
+            tool_events: list = []
             tool_calls_used = int(state.get("tool_calls_used") or 0)
  
             # ── Web search for research / generate intents ────────────────────
@@ -157,7 +157,7 @@ class DirectResponseAgent(BaseAgent):
                 if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
                     return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request.", "llm_calls_made": 0}
                 tool_calls_used += 1
-                tool_signals.append({"name": "web_search_tool", "args": {"query": search_query}})
+                tool_events.append({"name": "web_search_tool", "args": {"query": search_query}})
                 web_context = _web_search(search_query)
                 logger.info(f"[DirectResponse] Web context: {len(web_context)} chars")
  
@@ -167,7 +167,7 @@ class DirectResponseAgent(BaseAgent):
                 if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
                     return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request."}
                 tool_calls_used += 1
-                tool_signals.append({"name": "web_search_tool", "args": {"query": search_query}})
+                tool_events.append({"name": "web_search_tool", "args": {"query": search_query}})
                 web_context = _web_search(search_query)
                 logger.info(f"[DirectResponse] Web context: {len(web_context)} chars")
  
@@ -220,7 +220,7 @@ class DirectResponseAgent(BaseAgent):
             final_md = f"{header}\n\n{content}"
 
  
-            # ── Stubs so downstream nodes (store_ltm etc.) don't crash ─────────
+            # ── Stubs for deterministic downstream safety and learning nodes ───
             stub_solver = {
                 "solution":         content,
                 "final_answer":     "",
@@ -266,16 +266,13 @@ class DirectResponseAgent(BaseAgent):
                 "solver_output":      stub_solver,
                 "verifier_output":    stub_verifier,
                 "safety_passed":      True,
-                "explainer_output":   None,
                 "final_response":     final_md,
                 "conversation_log":   [final_md],
-                "hitl_required":      True,
-                "hitl_type":          "satisfaction",
-                "hitl_reason":        "Response delivered — was this helpful?",
-                "follow_up_question": None,
-                "student_satisfied":  None,
-                "agent_payload_log":          state.get("agent_payload_log") or [],
-                "direct_response_tool_calls": tool_signals,
+                "hitl_required":      False,
+                "hitl_type":          None,
+                "hitl_reason":        None,
+                "agent_payload_log":  state.get("agent_payload_log") or [],
+                "direct_response_tool_calls": tool_events,
                 "tool_calls_used": tool_calls_used,
                 "llm_calls_made": 1,
             }
