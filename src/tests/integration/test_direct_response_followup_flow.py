@@ -3,21 +3,18 @@ from pathlib import Path
 
 import pytest
 
-_DR_PATH   = Path(__file__).resolve().parents[2] / "backend" / "agents" / "nodes" / "direct_response.py"
-_HITL_PATH = Path(__file__).resolve().parents[2] / "backend" / "agents" / "nodes" / "hitl.py"
+_DR_PATH = Path(__file__).resolve().parents[2] / "backend" / "agents" / "nodes" / "direct_response.py"
 
 
 def _load(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
-    mod  = importlib.util.module_from_spec(spec)
+    mod = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(mod)
     return mod
 
 
-dr   = _load(_DR_PATH,   "integration_dr_module")
-hitl = _load(_HITL_PATH, "integration_hitl_module")
-_process_satisfaction_response = hitl._process_satisfaction_response
+dr = _load(_DR_PATH, "integration_dr_module")
 
 
 class _FakeResp:
@@ -31,53 +28,31 @@ class _RecordingLLM:
 
     def invoke(self, messages):
         self.calls.append(messages)
-        return _FakeResp("<content>Refined explanation.</content>")
+        return _FakeResp("<content>Clear explanation.</content>")
 
 
 @pytest.mark.integration
-def test_dissatisfied_follow_up_changes_next_prompt(monkeypatch):
+def test_direct_response_finishes_without_satisfaction_interrupt(monkeypatch):
     monkeypatch.setattr(dr, "payload", lambda *a, **k: None)
     monkeypatch.setattr(dr, "format_ltm_for_explainer", lambda *_: "")
 
-    llm   = _RecordingLLM()
+    llm = _RecordingLLM()
     agent = dr.DirectResponseAgent.__new__(dr.DirectResponseAgent)
     agent.reserve_llm = llm
-
     state = {
-        "parsed_data":   {"problem_text": "Explain chain rule", "topic": "calculus"},
+        "parsed_data": {"problem_text": "Explain chain rule", "topic": "calculus"},
         "solution_plan": {"intent_type": "explain", "difficulty": "medium"},
-        "raw_text":      "Explain chain rule",
-        "ltm_context":   {},
+        "raw_text": "Explain chain rule",
+        "ltm_context": {},
         "agent_payload_log": [],
+        "complexity": "standard",
+        "tool_calls_used": 0,
     }
 
-    first = agent.direct_response_agent(state)
-    assert first["hitl_type"] == "satisfaction"
+    result = agent.direct_response_agent(state)
 
-    resume = _process_satisfaction_response(
-        {"satisfied": False, "follow_up": "focus on intuition"}, state
-    )
-    rerun_state = {**state, **resume}
-
-    second = agent.direct_response_agent(rerun_state)
-    assert second["final_response"].startswith("## 📖 Explanation")
-
-    last_prompt = llm.calls[-1][1].content   # second message = user prompt
-    assert "focus on intuition" in last_prompt
-
-
-@pytest.mark.integration
-def test_satisfied_response_ends_loop(monkeypatch):
-    """If the student is satisfied, no follow-up question should be injected."""
-    monkeypatch.setattr(dr, "payload", lambda *a, **k: None)
-    monkeypatch.setattr(dr, "format_ltm_for_explainer", lambda *_: "")
-
-    state = {
-        "parsed_data": {"problem_text": "Explain limits", "topic": "calculus"},
-        "raw_text":    "Explain limits",
-    }
-    resume = _process_satisfaction_response({"satisfied": True, "follow_up": ""}, state)
-
-    assert resume["student_satisfied"]  is True
-    assert resume["follow_up_question"] is None
-    assert "user_corrected_text" not in resume
+    assert result["final_response"].startswith("## 📖 Explanation")
+    assert result["hitl_required"] is False
+    assert result["hitl_type"] is None
+    assert result["llm_calls_made"] == 1
+    assert len(llm.calls) == 1
