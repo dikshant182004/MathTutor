@@ -59,4 +59,8 @@ def detect_complexity(text: str) -> str:
     except Exception: return "standard"
 def prefilter_node(state: dict[str, Any]) -> dict[str, Any]:
     result = check_input(_text_from_state(state))
-    return {"prefilter_passed": result["safe"], "guardrail_passed": result["safe"], "guardrail_reason": result["block_reason"], "final_response": result["student_message"] if not result["safe"] else state.get("final_response"), "cleaned_problem": result["cleaned_text"], "complexity": result["complexity"], "agent_payload_log": state.get("agent_payload_log") or []}
+    update = {"prefilter_passed": result["safe"], "guardrail_passed": result["safe"], "guardrail_reason": result["block_reason"], "final_response": result["student_message"] if not result["safe"] else state.get("final_response"), "cleaned_problem": result["cleaned_text"], "complexity": result["complexity"], "agent_payload_log": state.get("agent_payload_log") or []}
+    if not result["safe"]:
+        update["route"] = "END"
+        update["route_reason"] = "input_blocked"
+    return update
