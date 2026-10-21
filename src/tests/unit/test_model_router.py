@@ -5,7 +5,7 @@ import pytest
 
 from backend.llm.profiles import PROFILES, get_profile, public_profiles
 from backend.llm.registry import (
-    GPT_OSS_20B, GPT_OSS_120B, GPT_OSS_SAFEGUARD_20B, resolve_model_id,
+    GPT_OSS_20B, GPT_OSS_120B, GPT_OSS_SAFEGUARD_20B, MODEL_SPECS, resolve_model_id,
 )
 from backend.llm.router import ModelRouter
 
@@ -140,6 +140,17 @@ def test_safety_model_id_is_allowlisted(monkeypatch):
 
 
 @pytest.mark.unit
+def test_model_capability_registry_matches_supported_groq_features():
+    # Groq documents best-effort JSON-schema output, tool calling, and reasoning
+    # effort for GPT-OSS-Safeguard 20B; strict JSON schema is a separate capability.
+    spec = MODEL_SPECS[GPT_OSS_SAFEGUARD_20B]
+    assert spec.tier == "safety"
+    assert spec.supports_json_schema is True
+    assert spec.supports_tool_calling is True
+    assert spec.supports_reasoning_effort is True
+
+
+@pytest.mark.unit
 def test_live_structured_output_smoke_all_profiles():
     from pydantic import BaseModel, Field
     if os.getenv("MATH_TUTOR_LIVE_SMOKE") != "1" or not os.getenv("GROQ_API_KEY"):
@@ -158,13 +169,14 @@ def test_live_structured_output_smoke_all_profiles():
 @pytest.mark.unit
 def test_live_structured_output_smoke_existing_agent_schemas():
     from backend.agents.utils.artifacts import (
-        ExplainerOutput, GuardrailOutput, IntentRouterOutput, ParserOutput,
+        ExplainerOutput, GuardrailOutput, IntakeOutput, IntentRouterOutput, ParserOutput,
         SafetyOutput, VerifierOutput,
     )
     if os.getenv("MATH_TUTOR_LIVE_SMOKE") != "1" or not os.getenv("GROQ_API_KEY"):
-        pytest.skip("Set MATH_TUTOR_LIVE_SMOKE=1 and GROQ_API_KEY to test the six live agent schemas.")
+        pytest.skip("Set MATH_TUTOR_LIVE_SMOKE=1 and GROQ_API_KEY to test live agent structured outputs.")
     router = ModelRouter(api_key=os.environ["GROQ_API_KEY"], reasoning_api_key=os.getenv("GROQ_API_KEY_2"))
     examples = [
+        (IntakeOutput, 'Classify the math request "x + 1 = 2". Return safe=true, block_reason=null, student_message=null, cleaned_problem="x + 1 = 2", variables=["x"], constraints=[], topic="algebra", difficulty="easy", solver_strategy="Subtract 1 from both sides.", intent="solve", complexity="trivial", needs_clarification=false, clarification_reason=null, needs_web=false, confidence=0.99.'),
         (ParserOutput, 'Parse "x + 1 = 2". Return problem_text="x + 1 = 2", topic="algebra", variables=["x"], constraints=[], needs_clarification=false, clarification_reason=null.'),
         (IntentRouterOutput, 'Classify "x + 1 = 2". Return topic="algebra", difficulty="easy", solver_strategy="Subtract 1 from both sides.", intent_type="solve".'),
         (GuardrailOutput, 'This is a safe algebra equation. Return passed=true, topic="algebra", block_reason=null, message=null.'),
