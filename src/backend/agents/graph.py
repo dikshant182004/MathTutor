@@ -203,12 +203,13 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         prefetch_web = bool(needs_web and query and tool_calls_used < max_tools)
         # Student memory retrieval and optional web retrieval are independent; run concurrently.
         thread_id = str(state.get("thread_id") or "")
-        prefetch_notes = bool(thread_id and has_store(thread_id) and query)
+        notes_query = str(plan.get("solver_strategy") or parsed.get("topic") or plan.get("topic") or query).strip()[:300]
+        prefetch_notes = bool(thread_id and has_store(thread_id) and notes_query)
         workers = 1 + int(prefetch_web) + int(prefetch_notes)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             memory_future = pool.submit(memory_manager_node, state)
             web_future = pool.submit(web_search_tool.invoke, {"query": query}) if prefetch_web else None
-            notes_future = pool.submit(rag_tool.invoke, {"query": query, "thread_id": thread_id}) if prefetch_notes else None
+            notes_future = pool.submit(rag_tool.invoke, {"query": notes_query, "thread_id": thread_id}) if prefetch_notes else None
             out = memory_future.result()
             try:
                 web_context = web_future.result() if web_future else ""
