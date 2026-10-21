@@ -310,7 +310,7 @@ def _record_learning_node(state: AgentState) -> dict:
         attempts   = state.get("solve_iterations") or 1
 
         payload(
-            state, "store_ltm",
+            state, "record_learning",
             summary=f"Stored | topic={topic} | outcome={outcome}",
             fields={
                 "Topic":      topic,
