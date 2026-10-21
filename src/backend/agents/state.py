@@ -28,6 +28,7 @@ class AgentState(TypedDict):
     parsed_data:        Optional[dict]           # ParserOutput
     solution_plan:      Optional[dict]           # IntentRouterOutput
     retrieved_context:  Optional[str]
+    retrieved_chunks: Optional[dict]
     solver_output:      Optional[dict]           # SolverOutput
     verifier_output:    Optional[dict]           # VerifierOutput
     safety_passed: Optional[bool]
@@ -118,7 +119,8 @@ def make_initial_state(
         "route_reason":        None,
         "parsed_data":         None,
         "solution_plan":       None,
-        "retrieved_context":   None, 
+        "retrieved_context":   None,
+        "retrieved_chunks":    None, 
  
         # Solver
         "messages":            [],
