@@ -4,6 +4,7 @@ from backend.agents import *
 from backend.agents.nodes import *
 from backend.agents.utils.helper import _parse_xml_response
 from backend.agents.nodes.memory.memory_manager import format_ltm_for_explainer
+from backend.agents.runtime_telemetry import budget_limits
 from backend.agents.nodes.tools.tools import web_search_tool as _ws_tool
 
 
@@ -154,7 +155,7 @@ class DirectResponseAgent(BaseAgent):
             if intent_type == "research":
                 search_query = f"{topic} {problem_text[:100]}"
                 logger.info(f"[DirectResponse] Tavily search (research): {search_query[:100]}")
-                if tool_calls_used >= int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6):
+                if tool_calls_used >= budget_limits(state)[1]:
                     return {"budget_exhausted": True, "final_response": "This request reached its configured tool-call budget. Please narrow the question or start a new request.", "llm_calls_made": 0}
                 tool_calls_used += 1
                 tool_events.append({"name": "web_search_tool", "args": {"query": search_query}})
