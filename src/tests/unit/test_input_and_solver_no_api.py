@@ -32,7 +32,7 @@ def _full_state(**overrides) -> dict:
         "hitl_reason":              "old",
         "solver_output":            {"x": 1},
         "verifier_output":          {"status": "correct"},
-        "explainer_output":         {"y": 2},
+        "solution_struct":          {"y": 2},
         "solution_plan":            {"intent_type": "solve"},
         "parsed_data":              {"topic": "algebra"},
         "safety_passed":            True,
@@ -80,18 +80,13 @@ class _FakeReserveLLM:
 
 
 def _patched_solver(monkeypatch) -> "solver_mod.SolverAgent":
-    monkeypatch.setattr(solver_mod, "has_store",              lambda _tid: False)
     monkeypatch.setattr(
         solver_mod,
         "trim_messages_if_needed",
         lambda messages, thread_id=None, llm=None, **_: messages,
     )
-    monkeypatch.setattr(solver_mod, "format_ltm_for_solver",   lambda *_: "")
-    monkeypatch.setattr(solver_mod, "payload",                 lambda *a, **k: None)
-    monkeypatch.setattr(
-        solver_mod, "_make_scoped_rag",
-        lambda _tid: (_ for _ in ()).throw(RuntimeError("RAG must not run")),
-    )
+    monkeypatch.setattr(solver_mod, "format_ltm_for_solver", lambda *_: "")
+    monkeypatch.setattr(solver_mod, "payload", lambda *a, **k: None)
     agent             = solver_mod.SolverAgent.__new__(solver_mod.SolverAgent)
     agent.reserve_llm = _FakeReserveLLM()
     return agent
@@ -178,44 +173,23 @@ def test_solver_increments_iteration_counter(monkeypatch):
     assert out["solve_iterations"] == 3
 
 
-# ── SolverAgent — RAG path ────────────────────────────────────────────────────
+# Retrieval is now a graph node. Solver tool binding must not force or execute RAG.
 
 @pytest.mark.unit
-def test_solver_uses_rag_when_store_exists(monkeypatch):
-    """When has_store returns True, RAG context must be fetched and flagged."""
-    monkeypatch.setattr(solver_mod, "has_store", lambda _tid: True)
-    monkeypatch.setattr(
-        solver_mod,
-        "trim_messages_if_needed",
-        lambda messages, thread_id=None, llm=None, **_: messages,
-    )
-    monkeypatch.setattr(solver_mod, "format_ltm_for_solver",   lambda *_: "")
-    monkeypatch.setattr(solver_mod, "payload",                 lambda *a, **k: None)
-
-    fake_rag_context = "RAG: chain rule derivation steps"
-
-    def _fake_scoped_rag(_tid):
-        class _R:
-            def invoke(self, _payload):
-                return fake_rag_context
-        return _R()
-
-    monkeypatch.setattr(solver_mod, "_make_scoped_rag", _fake_scoped_rag)
-
-    agent             = solver_mod.SolverAgent.__new__(solver_mod.SolverAgent)
-    agent.reserve_llm = _FakeReserveLLM()
-
+def test_solver_does_not_force_rag_tool(monkeypatch):
+    agent = _patched_solver(monkeypatch)
     state = {
-        "parsed_data":    {"problem_text": "Differentiate x^2", "topic": "calculus"},
-        "solution_plan":  {"intent_type": "solve", "difficulty": "medium",
-                           "solver_strategy": "power rule"},
+        "parsed_data": {"problem_text": "Differentiate x^2", "topic": "calculus"},
+        "solution_plan": {"intent_type": "solve", "difficulty": "medium", "solver_strategy": "power rule"},
         "solve_iterations": 0,
-        "thread_id":      "rag-thread",
-        "messages":       [],
-        "ltm_context":    {},
+        "thread_id": "notes-thread",
+        "messages": [],
+        "ltm_context": {},
+        "retrieved_context": "Student notes: power rule",
         "verifier_output": {},
         "human_feedback": "",
         "agent_payload_log": [],
     }
     out = agent.solver_agent(state)
-    assert out["solver_output"]["rag_context_used"] is True
+    assert out["solver_output"]["rag_context_used"] is False
+    assert out["solver_output"]["final_answer"] == "x = 1"
