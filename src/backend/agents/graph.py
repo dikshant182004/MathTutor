@@ -129,6 +129,8 @@ def _route_after_verifier(state: AgentState) -> str:
         return "safety_agent"
 
     if status == "correct":
+        if str(state.get("complexity") or plan.get("complexity") or "").casefold() == "trivial":
+            return "compose_node"
         return "safety_agent"
     if status == "needs_human":
         return "hitl_node"
@@ -402,8 +404,8 @@ class MathTutorWorkflow(
 
         graph.add_node("solver_agent", timed_node("solver_agent", self.solver_agent, model_node=True))
         graph.add_node("tool_node", timed_node("tool_node", _run_tool_node))
-        graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent, model_node=True))
-        graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent, model_node=True))
+        graph.add_node("verifier_agent", timed_node("verifier_agent", self.verifier_agent))
+        graph.add_node("safety_agent", timed_node("safety_agent", self.safety_agent))
         graph.add_node("compose_node", timed_node("compose_node", compose_node))
         graph.add_node("record_learning", timed_node("record_learning", _record_learning_node))
         graph.add_node("direct_response_node", timed_node("direct_response_node", self.direct_response_agent, model_node=True))
@@ -466,6 +468,7 @@ class MathTutorWorkflow(
             "verifier_agent",
             _route_after_verifier,
             {"safety_agent":  "safety_agent",
+             "compose_node":  "compose_node",
              "solver_agent":  "solver_agent",
              "hitl_node":     "hitl_node",
              "END": END},
