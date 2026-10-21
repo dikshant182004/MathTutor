@@ -256,3 +256,29 @@ def test_verification_decision_must_match_interrupt_type_and_response(api_client
     )
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_decision"
+
+
+
+def test_second_resume_with_different_key_is_rejected_while_thread_locked(api_client):
+    client, redis, _ = api_client
+    thread_id = create_thread(client)
+    first = client.post(
+        f"/threads/{thread_id}/messages",
+        headers=bearer(),
+        json={"content": "Please solve this after clarification."},
+    )
+    assert first.status_code == 200
+    pending = client.get(f"/threads/{thread_id}/messages", headers=bearer()).json()["pending_interrupt"]
+    redis.set(f"resume-lock:{thread_id}", "another-worker", ex=300, nx=True)
+
+    response = client.post(
+        f"/threads/{thread_id}/resume",
+        headers={**bearer(), "Idempotency-Key": "concurrent-resume"},
+        json={
+            "interrupt_id": pending["interrupt_id"],
+            "decision": "submit",
+            "response": {"answer": "x = 1"},
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "thread_resume_in_progress"
