@@ -55,12 +55,8 @@ async def graph_event_stream(graph: Any, redis: Any, thread_id: str, student_id:
                     if node_name in timings:
                         node_event["ms"] = timings[node_name]
                     yield encode_sse("node", node_event)
-                    if any(k in update for k in ("route", "route_reason", "complexity", "intake_output")):
-                        from backend.agents.routing_policy import route_with_reason
-                        try:
-                            route_path, route_reason = route_with_reason(update)
-                        except Exception:
-                            route_path, route_reason = update.get("route"), update.get("route_reason")
+                    if "route" in update and "route_reason" in update:
+                        route_path, route_reason = update.get("route"), update.get("route_reason")
                         plan = update.get("solution_plan") or {}
                         parsed = update.get("parsed_data") or {}
                         yield encode_sse("route", {
