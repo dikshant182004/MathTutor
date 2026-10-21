@@ -282,3 +282,17 @@ def test_second_resume_with_different_key_is_rejected_while_thread_locked(api_cl
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "thread_resume_in_progress"
+
+
+
+def test_new_message_is_rejected_while_resume_lock_is_held(api_client):
+    client, redis, _ = api_client
+    thread_id = create_thread(client)
+    redis.set(f"resume-lock:{thread_id}", "another-worker", ex=300, nx=True)
+    response = client.post(
+        f"/threads/{thread_id}/messages",
+        headers=bearer(),
+        json={"content": "A concurrent follow-up"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "thread_resume_in_progress"
