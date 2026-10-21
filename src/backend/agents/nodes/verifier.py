@@ -1,6 +1,6 @@
 from backend.agents import *
 from backend.agents.nodes import *
-from backend.agents.nodes.verify_math import verify_math
+from backend.agents.verification import verify_math
 from backend.agents.runtime_telemetry import budget_limits
 
 class VerifierAgent(BaseAgent):
