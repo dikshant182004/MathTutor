@@ -293,13 +293,16 @@ def build_stm_checkpointer() -> RedisSaver:
         to Redis under key: checkpoint:<thread_id>:*
       - On HITL interrupt(), the state is checkpointed so graph.invoke(Command(resume=...))
         can restore exactly where it left off
-      - TTL: 2 hours (matches STM_SUMMARY_TTL)
+      - TTL: 2 hours, configured on RedisSaver and refreshed on read
 
     This is DIFFERENT from LTM (which we manage manually).
     STM = the live conversation state, scoped to one thread.
     LTM = cross-thread student profile, managed in memory_manager.py.
     """
-    saver = RedisSaver(redis_url=REDIS_URL)
+    saver = RedisSaver(
+        redis_url=REDIS_URL,
+        ttl={"default_ttl": 120, "refresh_on_read": True},
+    )
     saver.setup()
     logger.info("[STM] RedisSaver checkpointer ready")
     return saver
