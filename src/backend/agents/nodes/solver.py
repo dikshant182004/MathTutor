@@ -140,21 +140,11 @@ class SolverAgent(BaseAgent):
             rag_available = False
             is_retry = iteration > 0
 
-            _RAG_SENTINEL = "[RAG context retrieved from student's notes]"
-            rag_already_called = any(
-                (isinstance(m, ToolMessage) and "rag" in (m.name or "").lower())
-                or (isinstance(m, HumanMessage) and _RAG_SENTINEL in (m.content or ""))
-                for m in existing_msgs
-            )
+            rag_already_called = False
+            rag_query = ""
+            rag_result = ""
 
-            # Tracks whether RAG was executed inline THIS invocation.
-            # Needed because inline RAG never writes a ToolMessage to history,
-            # so all_msgs inspection alone would miss it and report rag_used=False.
-            _rag_ran_inline = False
-            rag_query  = ""   
-            rag_result = "" 
-
-            system = self._build_system(
+system = self._build_system(
                 strategy      = strategy,
                 attempt       = iteration + 1,
                 max_attempts  = 3,
