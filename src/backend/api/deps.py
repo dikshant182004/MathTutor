@@ -17,7 +17,7 @@ _THREAD_ID = re.compile(r"^(?P<student>[0-9a-f]{16}):(?P<stamp>[0-9]{1,20})$")
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 JWT_ISSUER = "mathtutor-api"
 JWT_TTL_SECONDS = 3600
-CHECKPOINT_TTL_SECONDS = 24 * 60 * 60
+CHECKPOINT_TTL_SECONDS = 2 * 60 * 60
 THREAD_TTL_SECONDS = 7 * 24 * 60 * 60
 IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60
 
