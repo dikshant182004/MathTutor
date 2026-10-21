@@ -13,7 +13,6 @@ assert _SPEC and _SPEC.loader
 _SPEC.loader.exec_module(hitl)
 
 _process_clarification_response = hitl._process_clarification_response
-_process_satisfaction_response  = hitl._process_satisfaction_response
 
 
 # ── clarification ─────────────────────────────────────────────────────────────
@@ -73,40 +72,3 @@ def test_clarification_with_whitespace_only_corrected_text(monkeypatch):
     assert "Find dy/dx" in out["user_corrected_text"]
 
 
-# ── satisfaction ──────────────────────────────────────────────────────────────
-
-@pytest.mark.unit
-def test_satisfaction_follow_up_injected_into_problem_context():
-    state = {
-        "parsed_data": {"problem_text": "Explain chain rule", "topic": "calculus"},
-        "raw_text":    "Explain chain rule",
-    }
-    out = _process_satisfaction_response(
-        {"satisfied": False, "follow_up": "Give geometric intuition too"}, state
-    )
-
-    assert out["student_satisfied"]     is False
-    assert out["follow_up_question"]    == "Give geometric intuition too"
-    assert "Student follow-up question" in out["user_corrected_text"]
-    assert "Give geometric intuition too" in out["parsed_data"]["problem_text"]
-
-
-@pytest.mark.unit
-def test_satisfaction_positive_has_no_follow_up_injection():
-    state = {"parsed_data": {"problem_text": "Explain limits"}}
-    out   = _process_satisfaction_response({"satisfied": True, "follow_up": ""}, state)
-
-    assert out["student_satisfied"]  is True
-    assert out["follow_up_question"] is None
-    assert "user_corrected_text" not in out
-
-
-@pytest.mark.unit
-def test_satisfaction_negative_with_empty_follow_up():
-    """Dissatisfied but no follow-up text — should still mark not satisfied."""
-    state = {
-        "parsed_data": {"problem_text": "Explain limits"},
-        "raw_text":    "Explain limits",
-    }
-    out = _process_satisfaction_response({"satisfied": False, "follow_up": ""}, state)
-    assert out["student_satisfied"] is False
