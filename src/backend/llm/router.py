@@ -153,6 +153,7 @@ class ModelRouter:
             "max_tokens": 2048,
             # RoutedChatModel owns the single retry and fallback budget.
             "max_retries": 0,
+            "timeout": 60,
             "reasoning_format": "hidden",
         }
         if effort is not None:
