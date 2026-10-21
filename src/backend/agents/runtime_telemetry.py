@@ -25,12 +25,15 @@ def timed_node(
             max_llm, _ = budget_limits(state)
             used = int(state.get("llm_calls_used") or 0)
             if model_node and used >= max_llm:
+                best = state.get("final_response") or (state.get("solver_output") or {}).get("solution") or ""
+                message = str(best).strip()
+                if message:
+                    message += "\n\n*Unverified: the request reached its model-call budget before all checks could finish.*"
+                else:
+                    message = "This request reached its configured model-call budget before an answer could be produced."
                 return {
                     "budget_exhausted": True,
-                    "final_response": (
-                        "This request reached its configured model-call budget. "
-                        "Please narrow the question or start a new request."
-                    ),
+                    "final_response": message,
                     "node_timings_ms": record_node_timing(
                         state, node_name, (perf_counter() - started) * 1000.0
                     ),
@@ -55,9 +58,17 @@ def timed_node(
 
 def budget_limits(state: dict[str, Any]) -> tuple[int, int]:
     """Read safe request-local defaults; callers may override them per request."""
+    complexity = str(
+        state.get("complexity")
+        or (state.get("solution_plan") or {}).get("complexity")
+        or "standard"
+    ).casefold()
+    default_llm = {"trivial": 2, "standard": 4, "hard": 6}.get(complexity, 4)
+    configured_llm = state.get("max_llm_calls")
+    configured_tools = state.get("max_tool_calls")
     return (
-        max(1, min(int(state.get("max_llm_calls") or 8), 30)),
-        max(0, min(int(state.get("max_tool_calls") if state.get("max_tool_calls") is not None else 6), 20)),
+        max(1, min(int(configured_llm if configured_llm is not None else default_llm), 30)),
+        max(0, min(int(configured_tools if configured_tools is not None else 3), 20)),
     )
 
 
