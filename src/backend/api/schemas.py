@@ -1,7 +1,7 @@
 """Validated request and response contracts for the MathTutor API."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -35,6 +35,8 @@ class MessageRequest(BaseModel):
 
 
 class ResumeRequest(BaseModel):
+    interrupt_id: str = Field(min_length=1, max_length=256)
+    decision: Literal["submit", "retry", "correct", "incorrect"] = "submit"
     response: dict[str, Any] = Field(min_length=1)
 
 
