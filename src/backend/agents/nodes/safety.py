@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from backend.agents import *
 from backend.agents.nodes import *
+from backend.agents.runtime_telemetry import budget_limits
 
 _SAFETY_POLICY_DIR = Path(__file__).resolve().parent / "security_checks"
 
@@ -95,6 +96,13 @@ class SafetyAgent(BaseAgent):
                 }
 
             # Only flagged output reaches the LLM policy check.
+            if int(state.get("llm_calls_used") or 0) >= budget_limits(state)[0]:
+                return {
+                    "safety_passed": False,
+                    "safety_reason": "Flagged output could not be reviewed within the model-call budget.",
+                    "final_response": "This response was withheld because its safety review could not finish within the request budget.",
+                    "llm_calls_made": 0,
+                }
             policy = _load_output_policy()
             prompt = self._build_safety_prompt(solution_text, policy)
 
