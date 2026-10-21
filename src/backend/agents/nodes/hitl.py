@@ -8,7 +8,7 @@ class HITLAgent(BaseAgent):
     """
     Human-in-the-Loop node — the single suspension point in the graph.
 
-    Four HITL scenarios:
+    Three HITL scenarios:
 
     ┌─────────────────┬──────────────────────────────┬────────────────────────────┐
     │ hitl_type       │ Triggered by                 │ Human action               │
@@ -22,8 +22,6 @@ class HITLAgent(BaseAgent):
     │ verification    │ verifier_agent               │ Expert marks correct /     │
     │                 │ status = "needs_human"       │ incorrect + optional hint  │
     ├─────────────────┼──────────────────────────────┼────────────────────────────┤
-    │ satisfaction    │ explainer_agent (always)     │ Student thumbs up/down     │
-    │                 │ after explanation delivered  │ + optional follow-up       │
     └─────────────────┴──────────────────────────────┴────────────────────────────┘
     """
 
@@ -41,7 +39,6 @@ class HITLAgent(BaseAgent):
                 elif state.get("verifier_output"):
                     hitl_type = "verification"
                 elif state.get("final_response"):
-                    hitl_type = "satisfaction"
                 else:
                     hitl_type = "clarification"
 
@@ -55,8 +52,6 @@ class HITLAgent(BaseAgent):
             elif hitl_type == "verification":
                 interrupt_payload = _build_verification_interrupt(state, reason)
 
-            elif hitl_type == "satisfaction":
-                interrupt_payload = _build_satisfaction_interrupt(state)
 
             else:
                 interrupt_payload = {
@@ -98,8 +93,6 @@ class HITLAgent(BaseAgent):
             elif hitl_type == "verification":
                 return _process_verification_response(human_response)
 
-            elif hitl_type == "satisfaction":
-                return _process_satisfaction_response(human_response, state)
 
             else:
                 return {"hitl_required": False, "hitl_type": None, "hitl_interrupt": None}
@@ -201,13 +194,10 @@ def _build_verification_interrupt(state: AgentState, reason: str) -> dict:
     }
 
 
-def _build_satisfaction_interrupt(state: AgentState) -> dict:
     """
     Shown after the explanation is delivered to the student.
-    UI: thumbs-up / thumbs-down + optional follow-up text-area.
     """
     return {
-        "hitl_type": "satisfaction",
         "message":   "Was this explanation helpful?",
         "prompt": (
             "Did this explanation make sense? "
@@ -301,9 +291,7 @@ def _process_verification_response(r: dict) -> dict:
 
 
 
-def _process_satisfaction_response(r: dict, state: AgentState) -> dict:
     """
-    Stores satisfaction result; route_after_hitl sends to END or re-explains.
     """
     satisfied    = bool(r.get("satisfied", False))
     follow_up    = (r.get("follow_up") or "").strip()
