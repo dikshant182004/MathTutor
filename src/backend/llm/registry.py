@@ -21,7 +21,7 @@ class ModelSpec:
 MODEL_SPECS = {
     GPT_OSS_20B: ModelSpec(GPT_OSS_20B, "fast", True, True, True),
     GPT_OSS_120B: ModelSpec(GPT_OSS_120B, "reasoning", True, True, True),
-    GPT_OSS_SAFEGUARD_20B: ModelSpec(GPT_OSS_SAFEGUARD_20B, "safety", False, True, False),
+    GPT_OSS_SAFEGUARD_20B: ModelSpec(GPT_OSS_SAFEGUARD_20B, "safety", True, True, True),
 }
 
 def resolve_model_id(tier: str, profile_default: str | None = None) -> str:
