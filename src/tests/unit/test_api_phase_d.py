@@ -167,7 +167,7 @@ def test_expired_checkpoint_returns_410(api_client):
     response = client.post(
         f"/threads/{thread_id}/resume",
         headers={**bearer(), "Idempotency-Key": "expired-checkpoint"},
-        json={"response": {"answer": "x=1"}},
+        json={"interrupt_id": "not-relevant", "decision": "submit", "response": {"answer": "x=1"}},
     )
     assert response.status_code == 410
     assert response.json()["detail"]["code"] == "checkpoint_expired"
@@ -194,7 +194,15 @@ def test_real_langgraph_interrupt_pauses_resumes_same_thread_and_duplicate_is_id
     assert pending["thread_id"] == thread_id
 
     headers = {**bearer(), "Idempotency-Key": "resume-once-01"}
-    body = {"response": {"answer": "x = 1"}}
+    body = {"interrupt_id": pending["interrupt_id"], "decision": "submit", "response": {"answer": "x = 1"}}
+    stale = client.post(
+        f"/threads/{thread_id}/resume",
+        headers={**bearer(), "Idempotency-Key": "stale-interrupt"},
+        json={**body, "interrupt_id": "stale-id"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "stale_interrupt"
+
     resumed = client.post(f"/threads/{thread_id}/resume", headers=headers, json=body)
     assert resumed.status_code == 200
     assert "event: done" in resumed.text
@@ -224,3 +232,27 @@ def test_sse_solution_parser_preserves_text_and_extracts_numbered_steps():
     assert result["text"].startswith("Step 1")
     assert [step["number"] for step in result["steps"]] == [1, 2]
     assert "2+2=4" in result["steps"][0]["text"]
+
+
+
+def test_verification_decision_must_match_interrupt_type_and_response(api_client):
+    client, _, _ = api_client
+    thread_id = create_thread(client)
+    first = client.post(
+        f"/threads/{thread_id}/messages",
+        headers=bearer(),
+        json={"content": "Please solve this after clarification."},
+    )
+    assert first.status_code == 200
+    pending = client.get(f"/threads/{thread_id}/messages", headers=bearer()).json()["pending_interrupt"]
+    response = client.post(
+        f"/threads/{thread_id}/resume",
+        headers={**bearer(), "Idempotency-Key": "wrong-decision"},
+        json={
+            "interrupt_id": pending["interrupt_id"],
+            "decision": "correct",
+            "response": {"answer": "x = 1"},
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_decision"
