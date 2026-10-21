@@ -61,6 +61,7 @@ class AgentState(TypedDict):
 
     # Per-request Phase C observability and bounded execution.
     node_timings_ms: Optional[dict]
+    request_started_at: Optional[float]
     max_llm_calls: Optional[int]
     max_tool_calls: Optional[int]
     llm_calls_used: int
@@ -146,6 +147,7 @@ def make_initial_state(
 
         # Request-local budgets/telemetry. Defaults are bounded and overridable.
         "node_timings_ms":     {},
+        "request_started_at":  None,
         # None means complexity-specific defaults: trivial=2, standard=4, hard=6.
         "max_llm_calls":       None,
         "max_tool_calls":      3,
