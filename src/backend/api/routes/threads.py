@@ -74,7 +74,8 @@ def delete_thread(
     redis=Depends(get_redis),
     store=Depends(get_postgres),
 ) -> None:
-    check_thread_owner(redis, thread_id, student_id)
+    if store.get_thread(student_id, thread_id) is None:
+        raise HTTPException(status_code=404, detail={"code": "thread_not_found", "message": "Thread not found.", "retryable": False})
     if redis.get(f"resume-lock:{thread_id}"):
         raise HTTPException(status_code=409, detail={"code": "thread_resume_in_progress", "message": "This thread cannot be deleted while it is being resumed.", "retryable": True})
     # Postgres cascades messages and run analytics only for this owned thread.
@@ -97,8 +98,9 @@ def get_messages(
     graph=Depends(get_graph_app),
     store=Depends(get_postgres),
 ) -> dict:
-    check_thread_owner(redis, thread_id, student_id)
-    # The relational history remains available after the Redis checkpoint expires.
+    if store.get_thread(student_id, thread_id) is None:
+        raise HTTPException(status_code=404, detail={"code": "thread_not_found", "message": "Thread not found.", "retryable": False})
+    # The relational history remains available after Redis metadata/checkpoint expiry.
     messages = [
         {"id": str(row["message_id"]), "role": row["role"], "content": row["content"],
          "created_at": _epoch(row["created_at"])}
