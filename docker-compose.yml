@@ -18,6 +18,25 @@ version: "3.9"
 
 services:
 
+  # ── Postgres: durable API history and analytics (Phase E) ────────────────────
+  postgres:
+    image: postgres:16
+    container_name: mathtutor_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: mathtutor
+      POSTGRES_PASSWORD: mathtutor
+      POSTGRES_DB: mathtutor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mathtutor -d mathtutor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── Redis Stack ──────────────────────────────────────────────────────────────
   redis:
     image: redis/redis-stack:latest
@@ -83,5 +102,7 @@ services:
   #     - PYTHONPATH=/app:/app/src
 
 volumes:
+  postgres_data:
+    driver: local
   redis_data:
     driver: local
