@@ -36,3 +36,11 @@ Last checked: 2026-10-12 against official provider documentation.
 - The API requires short-lived HS256 JWTs, validates thread ownership before reading graph state, and applies Redis-backed per-IP and per-student rate limits.
 - HITL resume requires an `Idempotency-Key`, the current `interrupt_id`, a decision compatible with the interrupt type, and a response payload. A Redis NX lock serializes resume execution per thread; completed idempotent requests replay their cached SSE events.
 - The LangGraph Redis checkpointer is configured with `ttl={"default_ttl": 120, "refresh_on_read": True}`; the API's checkpoint metadata lifetime is aligned to 2 hours. The Redis saver refreshes checkpoint expiry on reads. This configuration is covered by a unit test; actual expiry behavior against a provisioned Redis service still requires a deployment smoke test.
+
+
+## Phase E — Postgres conversation history and analytics
+
+- Postgres is the durable source of truth for thread metadata, conversation messages, and per-run usage/outcome analytics. The migration is versioned at `src/backend/api/migrations/001_conversation_history_analytics.sql` and is applied idempotently by the API repository.
+- Redis remains responsible for LangGraph checkpoints, short-lived thread coordination, rate limits, and idempotency locks. Expiring a Redis checkpoint does not delete relational conversation history.
+- All history, thread-list, and analytics reads are scoped by the authenticated `student_id`; message and run rows have composite foreign keys to the owning thread. Deleting a thread cascades only that student's messages and analytics.
+- Configure `DATABASE_URL` for the API. CI provisions PostgreSQL 16 and runs the integration test that verifies persistence, aggregates, and cross-student isolation. A production provider connection, backup/restore drill, and migration rollback procedure still require deployment validation.
