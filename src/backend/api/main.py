@@ -12,6 +12,7 @@ from backend.api.routes.models import router as models_router
 from backend.api.routes.threads import router as threads_router
 from backend.api.routes.chat import router as chat_router
 from backend.api.routes.hitl import router as hitl_router
+from backend.api.deps import get_postgres
 
 app = FastAPI(title="MathTutor API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -32,6 +33,13 @@ async def validation_error_handler(_request: Request, _exc: RequestValidationErr
         status_code=422,
         content={"detail": {"code": "invalid_request", "message": "The request did not match the required schema.", "retryable": False}},
     )
+
+
+@app.on_event("startup")
+def initialize_history_store() -> None:
+    # Fail fast rather than serving a chat API that silently loses durable history.
+    from backend.api.persistence import get_postgres_store
+    get_postgres_store()
 
 
 @app.get("/health", tags=["health"])
