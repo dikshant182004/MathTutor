@@ -201,3 +201,15 @@ def validate_idempotency_key(value: str | None) -> str:
             detail={"code": "idempotency_key_required", "message": "Provide a valid Idempotency-Key header.", "retryable": False},
         )
     return value
+
+
+def get_postgres():
+    """Require Postgres for durable conversation history and analytics."""
+    try:
+        from backend.api.persistence import get_postgres_store
+        return get_postgres_store()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "history_storage_unavailable", "message": "Durable history storage is unavailable.", "retryable": True},
+        ) from exc
