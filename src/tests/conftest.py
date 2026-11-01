@@ -98,7 +98,7 @@ def _install_backend_node_stubs() -> None:
     mm_mod.format_ltm_for_explainer = lambda *_args, **_kwargs: ""
 
     tools_pkg = types.ModuleType("backend.agents.nodes.tools")
-    tools_pkg.__path__ = []
+    tools_pkg.__path__ = [str(SRC / "backend" / "agents" / "nodes" / "tools")]
     tools_pkg.EMBED_INPUT_TYPE_DOC = "search_document"
     tools_pkg.EMBED_INPUT_TYPE_QUERY = "search_query"
     mcp_pkg = types.ModuleType("backend.agents.nodes.tools.mcp")
