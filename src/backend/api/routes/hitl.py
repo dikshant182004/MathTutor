@@ -12,7 +12,7 @@ from langgraph.types import Command
 
 from backend.api.deps import (
     CHECKPOINT_TTL_SECONDS, IDEMPOTENCY_TTL_SECONDS, THREAD_TTL_SECONDS, check_thread_owner,
-    get_current_student, get_graph_app, get_redis, require_live_checkpoint,
+    get_current_student, get_graph_app, get_postgres, get_redis, require_live_checkpoint,
     thread_meta_key, validate_idempotency_key,
 )
 from backend.api.routes.chat import _interrupt_from_snapshot
@@ -23,14 +23,29 @@ router = APIRouter(prefix="/threads", tags=["hitl"])
 
 
 async def _resume_stream(
-    graph: Any, redis: Any, thread_id: str,
-    response: dict, idempotency_storage_key: str,
+    graph: Any, redis: Any, store: Any, student_id: str, thread_id: str,
+    response: dict, run_id: str, idempotency_storage_key: str,
     resume_lock_key: str, resume_lock_token: str,
 ) -> AsyncIterator[str]:
     events: list[str] = []
     completed = False
+    run_started = False
+    status_value = "failed"
+    started = time.monotonic()
+    values: dict[str, Any] = {}
     config = {"configurable": {"thread_id": thread_id}}
     try:
+        store.start_run(student_id, thread_id, run_id)
+        run_started = True
+        resume_text = next((
+            str(response.get(field)).strip()
+            for field in ("corrected_text", "answer", "raw_text", "feedback")
+            if isinstance(response.get(field), str) and response.get(field).strip()
+        ), "")
+        if not resume_text and "is_correct" in response:
+            resume_text = "Student confirmed the solution is correct." if response.get("is_correct") else "Student marked the solution as incorrect."
+        if resume_text:
+            store.append_message(student_id, thread_id, "user", resume_text)
         async for mode, chunk in graph.astream(
             Command(resume=response),
             config=config,
@@ -78,11 +93,14 @@ async def _resume_stream(
         redis.expire(thread_meta_key(thread_id), THREAD_TTL_SECONDS)
         pending = _interrupt_from_snapshot(snapshot, thread_id)
         if pending:
+            status_value = "interrupted"
             redis.hset(thread_meta_key(thread_id), mapping={"pending_interrupt_id": pending.get("interrupt_id") or ""})
+            store.append_message(student_id, thread_id, "assistant", str(pending.get("prompt") or "A response is required to continue."))
             event = encode_sse("interrupt", pending)
             events.append(event)
             yield event
         else:
+            status_value = "completed"
             redis.hdel(thread_meta_key(thread_id), "pending_interrupt_id")
             verifier = values.get("verifier_output") or {}
             if verifier:
@@ -95,12 +113,20 @@ async def _resume_stream(
                 yield event
             final_response = values.get("final_response")
             if final_response:
+                store.append_message(student_id, thread_id, "assistant", str(final_response))
                 event = encode_sse("solution", solution_event_data(str(final_response)))
                 events.append(event)
                 yield event
+            store.finish_run(
+                student_id, thread_id, run_id, status=status_value,
+                route=values.get("route"), complexity=values.get("complexity"),
+                llm_calls=int(values.get("llm_calls_used") or 0),
+                tool_calls=int(values.get("tool_calls_used") or 0),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
             event = encode_sse("done", {
-                "run_id": uuid.uuid4().hex,
-                "message_id": __import__("uuid").uuid4().hex,
+                "run_id": run_id,
+                "message_id": uuid.uuid4().hex,
                 "models": [],
                 "usage": {
                     "llm_calls": int(values.get("llm_calls_used") or 0),
@@ -111,6 +137,15 @@ async def _resume_stream(
             yield event
         completed = True
     except Exception:
+        if run_started:
+            try:
+                store.finish_run(
+                    student_id, thread_id, run_id, status="failed",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    error_code="resume_failed",
+                )
+            except Exception:
+                pass
         event = encode_sse("error", {"code": "resume_failed", "message": "The interrupted request could not be resumed.", "retryable": True})
         events.append(event)
         yield event
@@ -149,6 +184,7 @@ def resume_thread(
     student_id: str = Depends(get_current_student),
     redis=Depends(get_redis),
     graph=Depends(get_graph_app),
+    store=Depends(get_postgres),
 ):
     metadata = check_thread_owner(redis, thread_id, student_id)
     key = validate_idempotency_key(idempotency_key)
@@ -234,8 +270,9 @@ def resume_thread(
                 headers=sse_headers(),
             )
         raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
+    run_id = uuid.uuid4().hex
     return StreamingResponse(
-        _resume_stream(graph, redis, thread_id, response, storage_key, resume_lock_key, resume_lock_token),
+        _resume_stream(graph, redis, store, student_id, thread_id, response, run_id, storage_key, resume_lock_key, resume_lock_token),
         media_type="text/event-stream",
         headers=sse_headers(),
     )
