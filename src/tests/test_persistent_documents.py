@@ -102,3 +102,25 @@ def test_list_documents_returns_only_the_student_index():
 
     assert [item["document_id"] for item in result] == ["1" * 32]
     assert result[0]["filename"] == "notes.pdf"
+
+
+
+def test_ingestion_persists_chunks_and_returns_relevant_passages(monkeypatch):
+    redis = FakeRedis()
+    student_id = "c" * 16
+    monkeypatch.setattr(documents, "_read_pdf", lambda _data: (2, "Integration by parts formula and worked example."))
+    monkeypatch.setattr(
+        documents,
+        "_embed",
+        lambda texts, input_type: [[1.0, 0.0] if input_type == "search_query" or "integration" in text.lower() else [0.0, 1.0] for text in texts],
+    )
+
+    saved = documents.ingest_pdf(redis, student_id, "calculus.pdf", b"%PDF-test")
+    results = documents.search_documents(redis, student_id, "integration by parts")
+
+    assert saved["document_id"]
+    assert saved["chunks"] >= 1
+    assert results
+    assert results[0]["filename"] == "calculus.pdf"
+    assert "Integration by parts" in results[0]["text"]
+    assert documents.list_documents(redis, student_id)[0]["document_id"] == saved["document_id"]
