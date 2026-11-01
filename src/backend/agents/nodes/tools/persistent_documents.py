@@ -90,6 +90,12 @@ def _read_pdf(file_bytes: bytes) -> tuple[int, str]:
     return len(reader.pages), text
 
 
+def has_student_documents(redis: Any, student_id: str) -> bool:
+    """Cheap existence check used to avoid needless embedding calls for empty namespaces."""
+    prefix = _prefix(student_id)
+    return bool(redis.zrange(f"{prefix}:index", 0, 0))
+
+
 def list_documents(redis: Any, student_id: str) -> list[dict[str, Any]]:
     prefix = _prefix(student_id)
     ids = redis.zrevrange(f"{prefix}:index", 0, -1)
