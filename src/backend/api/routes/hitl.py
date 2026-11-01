@@ -29,6 +29,7 @@ async def _resume_stream(
 ) -> AsyncIterator[str]:
     events: list[str] = []
     completed = False
+    failed = False
     run_started = False
     status_value = "failed"
     started = time.monotonic()
@@ -144,6 +145,7 @@ async def _resume_stream(
             yield event
         completed = True
     except Exception:
+        failed = True
         if run_started:
             try:
                 store.finish_run(
@@ -159,7 +161,7 @@ async def _resume_stream(
         completed = True
     finally:
         # Cache the exact emitted events; the same key can never execute resume twice.
-        if completed:
+        if completed and not failed:
             redis.set(
                 idempotency_storage_key,
                 json.dumps({"status": "complete", "events": events}, separators=(",", ":")),
