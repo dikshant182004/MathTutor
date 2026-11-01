@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+@import "katex/dist/katex.min.css";
 
 :root {
   color-scheme: light;
@@ -179,3 +180,24 @@ h1, h2, h3, strong { font-family: "Manrope", sans-serif; }
   .hitl-actions { flex-direction: column; }
   .hitl-actions button { width: 100%; }
 }
+
+
+/* Safe Markdown and display math for assistant explanations. */
+.message-content > :first-child { margin-top: 0; }
+.message-content > :last-child { margin-bottom: 0; }
+.message-content p { margin: 0 0 12px; }
+.message-content h1, .message-content h2, .message-content h3, .message-content h4 { color: #27354c; line-height: 1.4; margin: 18px 0 8px; }
+.message-content h1 { font-size: 19px; }
+.message-content h2 { font-size: 16px; }
+.message-content h3, .message-content h4 { font-size: 14px; }
+.message-content ul, .message-content ol { margin: 8px 0 14px; padding-left: 23px; }
+.message-content li { margin: 4px 0; padding-left: 3px; }
+.message-content blockquote { border-left: 3px solid #cbd7fb; color: #64728a; margin: 12px 0; padding: 2px 0 2px 13px; }
+.message-content code { background: #f0f3f8; border-radius: 4px; color: #354a78; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; padding: 2px 4px; }
+.message-content pre { background: #f5f7fb; border: 1px solid #e8edf5; border-radius: 9px; margin: 10px 0 14px; overflow-x: auto; padding: 12px; }
+.message-content pre code { background: transparent; padding: 0; }
+.message-content table { border-collapse: collapse; display: block; margin: 12px 0; max-width: 100%; overflow-x: auto; width: max-content; }
+.message-content th, .message-content td { border: 1px solid #e1e6ef; padding: 7px 10px; text-align: left; }
+.message-content th { background: #f5f7fb; font-weight: 700; }
+.message-content .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0 8px; }
+.message-content a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
