@@ -48,3 +48,26 @@ jobs:
 
       - name: Run Tests (pytest)
         run: .venv/bin/pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Next.js frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+        run: npm run build
