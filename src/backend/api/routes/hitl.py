@@ -167,6 +167,12 @@ async def _resume_stream(
                 json.dumps({"status": "complete", "events": events}, separators=(",", ":")),
                 ex=IDEMPOTENCY_TTL_SECONDS,
             )
+        elif failed:
+            redis.set(
+                idempotency_storage_key,
+                json.dumps({"status": "failed", "events": events}, separators=(",", ":")),
+                ex=IDEMPOTENCY_TTL_SECONDS,
+            )
         else:
             redis.set(
                 idempotency_storage_key,
