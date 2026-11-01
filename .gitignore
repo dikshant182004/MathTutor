@@ -67,3 +67,10 @@ coverage.xml
 
 # ── Streamlit ─────────────────────────────────────────────────────────────────
 .streamlit/secrets.toml
+
+# ── Next.js frontend ──────────────────────────────────────────────────────────
+/frontend/node_modules/
+/frontend/.next/
+/frontend/out/
+/frontend/next-env.d.ts
+/frontend/.env.local
