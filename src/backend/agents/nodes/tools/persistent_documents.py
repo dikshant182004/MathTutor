@@ -138,6 +138,9 @@ def ingest_pdf(redis: Any, student_id: str, filename: str, file_bytes: bytes) ->
         raise ValueError("PDF is too large to index safely (maximum 500 chunks).")
     try:
         vectors = _embed(chunks, input_type="search_document")
+    except RuntimeError:
+        # Preserve actionable configuration errors, especially a missing API key.
+        raise
     except Exception as exc:
         raise RuntimeError("The embedding service could not index this PDF.") from exc
     if len(vectors) != len(chunks):
