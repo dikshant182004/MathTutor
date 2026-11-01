@@ -14,6 +14,7 @@ from typing import Any
 
 MAX_PDF_BYTES = 10 * 1024 * 1024
 MAX_CHUNKS_PER_DOCUMENT = 500
+MAX_DOCUMENTS_PER_STUDENT = 25
 DEFAULT_TOP_K = 5
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
@@ -121,6 +122,8 @@ def ingest_pdf(redis: Any, student_id: str, filename: str, file_bytes: bytes) ->
         raise ValueError("PDF exceeds the 10 MiB upload limit.")
     if not filename.lower().endswith(".pdf"):
         raise ValueError("Only PDF documents are supported.")
+    if len(list_documents(redis, student_id)) >= MAX_DOCUMENTS_PER_STUDENT:
+        raise ValueError("A student can keep at most 25 indexed PDFs. Delete an older document first.")
     try:
         pages, text = _read_pdf(file_bytes)
     except ValueError:
@@ -170,6 +173,7 @@ def ingest_pdf(redis: Any, student_id: str, filename: str, file_bytes: bytes) ->
         if stored_keys:
             redis.delete(*stored_keys)
         redis.delete(metadata_key)
+        redis.zrem(f"{prefix}:index", document_id)
         raise
     return {
         "document_id": document_id,
