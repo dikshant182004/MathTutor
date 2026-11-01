@@ -10,7 +10,7 @@
 - Cohere `embed-english-v3.0` embeddings stored with chunk text and metadata in Redis.
 - Redis keys are namespaced by the authenticated 16-character student ID. Both retrieval and deletion check ownership; the API never accepts a student ID from the request body.
 - Persistent retrieval is added to the existing `rag_tool` and combined with the legacy per-thread FAISS/BM25 retrieval when available.
-- Redis Stack/RediSearch is not required: vector scoring is cosine similarity in application code. This works with the lightweight `redis:7-alpine` service already used by the local Compose file.
+- The document store itself uses ordinary Redis hashes and application-side cosine scoring, so it does not require a RediSearch vector index. The LangGraph Redis checkpointer does require RedisJSON and RediSearch; Compose therefore uses the lightweight `redis:8-alpine` image, which includes both modules.
 - Unit tests cover cross-student isolation, ownership-safe deletion, metadata listing, ingestion, and relevant retrieval.
 
 ### Data layout
