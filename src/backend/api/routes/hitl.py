@@ -285,7 +285,7 @@ def resume_thread(
                 headers=sse_headers(),
             )
         raise HTTPException(status_code=409, detail={"code": "resume_in_progress", "message": "A resume with this idempotency key has already started.", "retryable": False})
-    run_id = uuid.uuid4().hex
+    run_id = str(uuid.uuid4())
     return StreamingResponse(
         _resume_stream(graph, redis, store, student_id, thread_id, response, run_id, storage_key, resume_lock_key, resume_lock_token),
         media_type="text/event-stream",
