@@ -226,11 +226,35 @@ def rag_tool(query: str, thread_id: str) -> str:
         Ranked passages with page numbers and scores, or a clear
         "no relevant content" message.
     """
-    # ── Guard: no store ───────────────────────────────────────────────────────
+    # Persistent notes are scoped by the student prefix in API thread IDs.
+    # This makes uploaded notes available across sessions and process restarts.
+    persistent_results = []
+    student_id = (thread_id or "").split(":", 1)[0]
+    if student_id:
+        try:
+            from backend.agents.utils.db_utils import get_sync_client
+            from backend.agents.nodes.tools.persistent_documents import search_documents
+            persistent_results = [
+                item for item in search_documents(get_sync_client(), student_id, query, limit=TOP_K)
+                if float(item.get("score", 0.0)) >= MIN_SCORE
+            ]
+        except Exception as exc:
+            # Persistent retrieval is additive: a transient embedding/storage failure
+            # must not prevent the existing per-thread retrieval path from working.
+            logger.warning("[CRAG] Persistent document retrieval unavailable: %s", type(exc).__name__)
+
+    # ── Guard: neither persistent nor per-thread store ─────────────────────────
     if not thread_id or not has_store(thread_id):
+        if persistent_results:
+            passages = [
+                f"[Document {item['filename']} | chunk={item['chunk_index']} | relevance={item['score']:.3f}]\\n{item['text']}"
+                for item in persistent_results
+            ]
+            logger.info("[CRAG] Returning %s persistent student-note passages", len(passages))
+            return "Persistent student notes — relevant passage(s):\\n\\n" + "\\n\\n---\\n\\n".join(passages)
         logger.info(f"[CRAG] No store for thread={thread_id} — skipping")
         return (
-            "CRAG: No document indexed for this session. "
+            "CRAG: No document indexed for this student. "
             "Do NOT call rag_tool again — use web_search_tool or your own knowledge."
         )
 
@@ -287,10 +311,19 @@ def rag_tool(query: str, thread_id: str) -> str:
         logger.info(f"[CRAG] {msg}")
         return msg
 
-    logger.info(f"[CRAG] Returning {len(results)} passages from '{filenames}'")
+    for item in persistent_results:
+        results.append(
+            f"[Persistent document {item['filename']} | chunk={item['chunk_index']} | relevance={item['score']:.3f}]\\n"
+            f"{item['text']}"
+        )
+
+    logger.info(
+        "[CRAG] Returning %s combined passages (thread-local + persistent student notes)",
+        len(results),
+    )
     return (
-        f"Hybrid CRAG — {len(results)} passage(s) from '{filenames}':\n\n"
-        + "\n\n---\n\n".join(results)
+        f"Hybrid CRAG — {len(results)} passage(s) from '{filenames} and persistent student notes':\\n\\n"
+        + "\\n\\n---\\n\\n".join(results)
     )
 
 
