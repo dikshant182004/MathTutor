@@ -1,6 +1,10 @@
 "use client";
 
 import Script from "next/script";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Thread = {
@@ -509,7 +513,13 @@ export default function HomePage() {
                       {message.role !== "user" && <div className="assistant-avatar">∑</div>}
                       <div className="message-bubble">
                         <div className="message-label">{message.role === "user" ? "YOU" : "MATHTUTOR"}</div>
-                        <div className="message-content">{message.content || (busy ? <span className="typing"><i /><i /><i /></span> : "No response was returned.")}</div>
+                        <div className="message-content">
+                          {message.content ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                              {message.content}
+                            </ReactMarkdown>
+                          ) : busy ? <span className="typing"><i /><i /><i /></span> : "No response was returned."}
+                        </div>
                       </div>
                     </article>
                   ))}
