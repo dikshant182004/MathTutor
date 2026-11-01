@@ -204,7 +204,18 @@ def _retrieve_ltm_node(state: AgentState) -> dict:
         # Student memory retrieval and optional web retrieval are independent; run concurrently.
         thread_id = str(state.get("thread_id") or "")
         notes_query = str(plan.get("solver_strategy") or parsed.get("topic") or plan.get("topic") or query).strip()[:300]
-        prefetch_notes = bool(thread_id and has_store(thread_id) and notes_query)
+        student_id = str(state.get("student_id") or "")
+        persistent_notes_available = False
+        if student_id:
+            try:
+                from backend.agents.utils.db_utils import get_sync_client
+                from backend.agents.nodes.tools.persistent_documents import has_student_documents
+                persistent_notes_available = has_student_documents(get_sync_client(), student_id)
+            except Exception as exc:
+                logger.warning("[Retrieval] Could not inspect persistent student notes: %s", type(exc).__name__)
+        prefetch_notes = bool(
+            thread_id and notes_query and (has_store(thread_id) or persistent_notes_available)
+        )
         workers = 1 + int(prefetch_web) + int(prefetch_notes)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             memory_future = pool.submit(memory_manager_node, state)
