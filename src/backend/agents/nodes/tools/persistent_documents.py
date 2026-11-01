@@ -110,7 +110,6 @@ def list_documents(redis: Any, student_id: str) -> list[dict[str, Any]]:
             "pages": int(item.get("pages", 0)),
             "chunks": int(item.get("chunks", 0)),
             "uploaded_at": float(item.get("uploaded_at", 0)),
-            "sha256": item.get("sha256", ""),
         })
     return documents
 
