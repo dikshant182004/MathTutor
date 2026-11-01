@@ -2,7 +2,7 @@
 
 The implementation deliberately does not require Redis Stack/RediSearch: vectors
 and metadata are persisted as Redis hashes, and cosine ranking is computed in
-application code. This keeps the lightweight Redis 7 local setup compatible.
+application code. This keeps document storage compatible with ordinary Redis commands.
 """
 from __future__ import annotations
 
