@@ -1,4 +1,4 @@
-# FastAPI runtime dependency set. Transitional agent imports still require the legacy RAG/media packages until their planned removal in Phase F.
+# FastAPI runtime dependency set, including packages imported by the existing graph and the persistent document API.
 fastapi==0.135.1
 python-multipart==0.0.20
 uvicorn==0.41.0
