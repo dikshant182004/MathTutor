@@ -121,13 +121,22 @@ def ingest_pdf(redis: Any, student_id: str, filename: str, file_bytes: bytes) ->
         raise ValueError("PDF exceeds the 10 MiB upload limit.")
     if not filename.lower().endswith(".pdf"):
         raise ValueError("Only PDF documents are supported.")
-    pages, text = _read_pdf(file_bytes)
+    try:
+        pages, text = _read_pdf(file_bytes)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("The uploaded PDF could not be parsed.") from exc
     chunks = _split_text(text)
     if not chunks:
         raise ValueError("No text chunks could be created from this PDF.")
-    if len(chunks) >= MAX_CHUNKS_PER_DOCUMENT and len(text) > CHUNK_SIZE * MAX_CHUNKS_PER_DOCUMENT:
+    max_indexed_chars = CHUNK_SIZE + (MAX_CHUNKS_PER_DOCUMENT - 1) * (CHUNK_SIZE - CHUNK_OVERLAP)
+    if len(chunks) >= MAX_CHUNKS_PER_DOCUMENT and len(text) > max_indexed_chars:
         raise ValueError("PDF is too large to index safely (maximum 500 chunks).")
-    vectors = _embed(chunks, input_type="search_document")
+    try:
+        vectors = _embed(chunks, input_type="search_document")
+    except Exception as exc:
+        raise RuntimeError("The embedding service could not index this PDF.") from exc
     if len(vectors) != len(chunks):
         raise RuntimeError("Embedding service returned an incomplete vector set.")
 
