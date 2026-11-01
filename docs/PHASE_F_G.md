@@ -5,7 +5,7 @@
 ### Implemented
 
 - Authenticated `GET /documents`, `POST /documents`, and `DELETE /documents/{document_id}` endpoints.
-- PDF upload limit of 10 MiB; files must be PDFs and contain extractable text.
+- PDF upload limit of 10 MiB and 25 indexed documents per student; files must be PDFs and contain extractable text.
 - PDF extraction and chunking with 800-character chunks and 150-character overlap.
 - Cohere `embed-english-v3.0` embeddings stored with chunk text and metadata in Redis.
 - Redis keys are namespaced by the authenticated 16-character student ID. Both retrieval and deletion check ownership; the API never accepts a student ID from the request body.
