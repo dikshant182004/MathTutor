@@ -360,7 +360,7 @@ export default function HomePage() {
     try {
       const response: Record<string, unknown> =
         (pending.hitl_type || pending.type) === "verification"
-          ? { is_correct: decision === "correct", feedback: hitlResponse.trim() }
+          ? { is_correct: decision === "correct", fix_hint: hitlResponse.trim() }
           : { answer: hitlResponse.trim(), corrected_text: hitlResponse.trim(), raw_text: hitlResponse.trim() };
       await consumeRun(
         `/threads/${encodeURIComponent(selectedThread)}/resume`,
