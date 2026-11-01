@@ -96,6 +96,13 @@ async def _resume_stream(
             status_value = "interrupted"
             redis.hset(thread_meta_key(thread_id), mapping={"pending_interrupt_id": pending.get("interrupt_id") or ""})
             store.append_message(student_id, thread_id, "assistant", str(pending.get("prompt") or "A response is required to continue."))
+            store.finish_run(
+                student_id, thread_id, run_id, status="interrupted",
+                route=values.get("route"), complexity=values.get("complexity"),
+                llm_calls=int(values.get("llm_calls_used") or 0),
+                tool_calls=int(values.get("tool_calls_used") or 0),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
             event = encode_sse("interrupt", pending)
             events.append(event)
             yield event
