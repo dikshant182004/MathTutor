@@ -302,7 +302,7 @@ def rag_tool(query: str, thread_id: str) -> str:
     filenames = ", ".join(store["filenames"])
 
     # ── No relevant content — graceful skip, NOT an error ─────────────────────
-    if not results:
+    if not results and not persistent_results:
         msg = (
             f"CRAG: No relevant passages found in '{filenames}' for query '{query}'. "
             "Document does not appear to cover this topic. "
