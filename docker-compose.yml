@@ -1,108 +1,36 @@
-version: "3.9"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  JEE Math Tutor — Docker Compose
-#
-#  Services:
-#    redis          → Redis Stack (Redis + RedisJSON + RediSearch) for memory
-#    redisinsight   → Full RedisInsight GUI (commented out by default)
-#
-#  Quick Start:
-#    docker compose up -d redis                    # Redis only
-#    docker compose up -d redis redisinsight       # Redis + RedisInsight UI
-#
-#  Access:
-#    Redis server      : redis://default:jee_secret@localhost:6379
-#    RedisInsight UI   : http://localhost:5540    (when service is enabled)
-# ═══════════════════════════════════════════════════════════════════════════════
 
 services:
-
-  # ── Postgres: durable API history and analytics (Phase E) ────────────────────
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: mathtutor_postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: mathtutor
       POSTGRES_PASSWORD: mathtutor
       POSTGRES_DB: mathtutor
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mathtutor -d mathtutor"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # ── Redis Stack ──────────────────────────────────────────────────────────────
   redis:
-    image: redis/redis-stack:latest
-    container_name: jee_redis
-    restart: unless-stopped
+    image: redis:7-alpine
+    container_name: mathtutor_redis
     ports:
-      - "6379:6379"     # Redis server
+      - "6379:6379"
+    command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
-    environment:
-      - REDIS_ARGS=--requirepass jee_secret
-    command: >
-      redis-stack-server
-        --requirepass jee_secret
-        --appendonly yes
-        --appendfsync everysec
-        --maxmemory 2gb
-        --maxmemory-policy allkeys-lru
-        --save 900 1
-        --save 300 10
-        --save 60 10000
-        --loglevel notice
+      - redis_data_light:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "jee_secret", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  # ── RedisInsight UI (Recommended full-featured GUI) ──────────────────────────
-  # Uncomment the entire block below if you want to run RedisInsight as a service.
-  # Access it at: http://localhost:5540
-  #
-  # redisinsight:
-  #   image: redis/redisinsight:latest
-  #   container_name: jee_redisinsight
-  #   restart: unless-stopped
-  #   ports:
-  #     - "5540:5540"                  # RedisInsight web UI
-  #   environment:
-  #     - RI_REDIS_HOST=redis
-  #     - RI_REDIS_PORT=6379
-  #     - RI_REDIS_PASSWORD=jee_secret
-  #     - RI_REDIS_USER=default
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-
-  # ── Streamlit App (Optional) ─────────────────────────────────────────────────
-  # Recommended to run locally with ./entrypoint.sh instead of Docker.
-  # app:
-  #   build: .
-  #   container_name: jee_math_tutor
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8501:8501"
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-  #   volumes:
-  #     - .:/app
-  #   environment:
-  #     - PYTHONPATH=/app:/app/src
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
+  redis_data_light:
