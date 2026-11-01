@@ -38,10 +38,10 @@ jobs:
           cache-dependency-glob: "requirements-test.txt"
 
       - name: Setup Python
-        run: uv python install 3.12
+        run: uv python install 3.14
 
       - name: Create virtual environment
-        run: uv venv .venv
+        run: uv venv .venv --python 3.14
 
       - name: Install test dependencies
         run: uv pip install -r requirements-test.txt --python .venv/bin/python
