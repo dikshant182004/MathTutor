@@ -12,6 +12,7 @@ from backend.api.routes.models import router as models_router
 from backend.api.routes.threads import router as threads_router
 from backend.api.routes.chat import router as chat_router
 from backend.api.routes.hitl import router as hitl_router
+from backend.api.routes.documents import router as documents_router
 from backend.api.deps import get_postgres
 
 app = FastAPI(title="MathTutor API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -52,3 +53,4 @@ app.include_router(models_router)
 app.include_router(threads_router)
 app.include_router(chat_router)
 app.include_router(hitl_router)
+app.include_router(documents_router)
