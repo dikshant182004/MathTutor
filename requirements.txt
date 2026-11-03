@@ -48,8 +48,6 @@ protobuf==6.33.5                    # Protobuf serialisation
 grpcio==1.78.0                      # gRPC transport for Vision API
 grpcio-status==1.78.0               # gRPC status codes
 
-# ── Frontend ───────────────────────────────────────────────────────────────────
-streamlit==1.55.0                   # Streamlit web UI
 
 # ── Pydantic & Validation ──────────────────────────────────────────────────────
 pydantic==2.13.5                    # Structured output schemas
