@@ -15,6 +15,8 @@ Audit scope: the tracked tree on branch `Agent` after the frontend move to `src/
 | `entrypoint.sh` | Started Streamlit and checked Streamlit secrets | Now starts the FastAPI backend; requires deployment environment variables. |
 | `requirements.txt` | Installed Streamlit | Removed the retired Streamlit dependency. |
 | `.env.example` | Contained token-shaped placeholder strings and a Streamlit OAuth callback URL | Replaced token-shaped values with blanks/placeholders and removed the obsolete callback setting. |
+| `.gitignore` | Ignored build output under the old root `frontend/` path and retained Streamlit-specific rules | Updated Next.js ignore paths to `src/frontend/` and removed the obsolete Streamlit section. |
+| `.devcontainer/devcontainer.json` | Installed Streamlit and opened the deleted `src/frontend/app.py` on port 8501 | Updated the devcontainer to Python/Node tooling, install current dependencies, launch Next.js, and forward ports 3000/8000. |
 
 These are committed directly to `Agent`. They still need a fresh CI run to validate the combined result.
 
