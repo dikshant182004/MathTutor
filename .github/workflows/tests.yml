@@ -52,6 +52,9 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/frontend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,13 +63,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: src/frontend/package.json
 
       - name: Install frontend dependencies
-        working-directory: frontend
         run: npm install
 
+      - name: Lint Next.js frontend
+        run: npm run lint
+
       - name: Build Next.js frontend
-        working-directory: frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
