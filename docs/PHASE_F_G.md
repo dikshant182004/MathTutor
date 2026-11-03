@@ -33,7 +33,7 @@ Deleting a document removes its metadata, chunk keys, and index entry. The Redis
 
 ### Implemented
 
-- Next.js App Router application in `frontend/`, with TypeScript and a responsive layout.
+- Next.js App Router application in `src/frontend/`, with TypeScript and a responsive layout.
 - Google Identity Services sign-in; the ID token is exchanged through the existing `POST /auth/google` endpoint.
 - API JWT kept in tab-scoped `sessionStorage`.
 - Conversation creation, history list, message history, streamed SSE tokens/solution events, and visible API errors.
@@ -43,13 +43,13 @@ Deleting a document removes its metadata, chunk keys, and index entry. The Redis
 
 ### Local development
 
-Follow `frontend/README.md`. Set `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `frontend/.env.local`. Set the matching server-side `GOOGLE_CLIENT_ID`, `ALLOWED_ORIGINS=http://localhost:3000`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `COHERE_API_KEY` for the API process.
+Follow `src/frontend/README.md`. Set `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `src/frontend/.env.local`. Set the matching server-side `GOOGLE_CLIENT_ID`, `ALLOWED_ORIGINS=http://localhost:3000`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `COHERE_API_KEY` for the API process.
 
 ## Acceptance checks before release
 
 1. Install API requirements in the target Python environment and run `python -m pip check`.
 2. Run `pytest` with Redis and Postgres available.
-3. Run `npm install` and `npm run build` from `frontend/`.
+3. Run `npm install` and `npm run build` from `src/frontend/`.
 4. With two distinct test identities, upload notes for one identity and prove they cannot be listed, retrieved, or deleted by the other.
 5. Upload a text PDF, restart the API process without deleting Redis volumes, and verify the document remains searchable.
 6. Complete Google sign-in, create a thread, stream a response, trigger/resume an interrupt, reload history, and delete a document through the browser.
