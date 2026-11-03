@@ -1,0 +1,29 @@
+{
+  "name": "mathtutor-web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "15.5.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "katex": "0.16.22",
+    "rehype-katex": "7.0.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "eslint": "9.39.1",
+    "eslint-config-next": "15.5.9",
+    "typescript": "5.9.3"
+  }
+}
