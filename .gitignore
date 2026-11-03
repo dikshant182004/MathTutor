@@ -65,12 +65,9 @@ htmlcov/
 coverage.xml
 *.cover
 
-# ── Streamlit ─────────────────────────────────────────────────────────────────
-.streamlit/secrets.toml
-
 # ── Next.js frontend ──────────────────────────────────────────────────────────
-/frontend/node_modules/
-/frontend/.next/
-/frontend/out/
-/frontend/next-env.d.ts
-/frontend/.env.local
+/src/frontend/node_modules/
+/src/frontend/.next/
+/src/frontend/out/
+/src/frontend/next-env.d.ts
+/src/frontend/.env.local
